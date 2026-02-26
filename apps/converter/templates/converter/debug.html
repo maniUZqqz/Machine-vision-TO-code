@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>Debug — Job {{ job.id|truncatechars:8 }}</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0f172a; color: #e2e8f0; }
+
+header {
+    background: #1e293b;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 1px solid #334155;
+    flex-wrap: wrap;
+}
+header h1 { font-size: 1rem; color: #94a3b8; }
+.badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: bold;
+}
+.badge-vision { background: #7c3aed; }
+.badge-gen { background: #059669; }
+.badge-diff { background: #dc2626; }
+
+/* Tabs */
+.tabs {
+    display: flex;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+    padding: 0 20px;
+}
+.tab {
+    padding: 10px 20px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: #94a3b8;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}
+.tab:hover { color: #e2e8f0; }
+.tab.active { color: #60a5fa; border-bottom-color: #60a5fa; }
+
+/* Tab content */
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.verdict {
+    padding: 10px 20px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+    font-size: 0.85rem;
+    color: #94a3b8;
+}
+.verdict strong { color: #f59e0b; }
+
+/* Three-panel layout */
+.panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    height: calc(100vh - 180px);
+    gap: 1px;
+    background: #334155;
+}
+.panels-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    height: calc(100vh - 180px);
+    gap: 1px;
+    background: #334155;
+}
+.panel {
+    background: #0f172a;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.panel-header {
+    padding: 8px 12px;
+    background: #1e293b;
+    font-size: 0.75rem;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+.panel-header .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.panel-body {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 8px;
+}
+.panel-body img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+.panel-body iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: white;
+}
+
+/* Compare mode */
+.compare-container {
+    position: relative;
+    width: 100%;
+    height: calc(100vh - 180px);
+    overflow: hidden;
+    background: #000;
+}
+.compare-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+.compare-layer img {
+    width: 100%;
+    height: auto;
+}
+.compare-slider {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: #f59e0b;
+    cursor: col-resize;
+    z-index: 10;
+}
+.compare-slider::after {
+    content: '⟷';
+    position: absolute;
+    top: 50%;
+    left: -14px;
+    width: 30px;
+    height: 30px;
+    background: #f59e0b;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: #000;
+    transform: translateY(-50%);
+}
+.compare-label {
+    position: absolute;
+    top: 10px;
+    padding: 4px 12px;
+    background: rgba(0,0,0,0.7);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    z-index: 5;
+}
+.compare-label-left { left: 10px; color: #60a5fa; }
+.compare-label-right { right: 10px; color: #34d399; }
+
+/* Diff analysis panel */
+.diff-panel {
+    padding: 20px;
+    max-height: calc(100vh - 180px);
+    overflow-y: auto;
+}
+.diff-section {
+    margin-bottom: 20px;
+    background: #1e293b;
+    border-radius: 8px;
+    padding: 16px;
+}
+.diff-section h3 {
+    font-size: 0.9rem;
+    color: #60a5fa;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.diff-item {
+    padding: 8px 12px;
+    margin: 4px 0;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.diff-good { background: rgba(52, 211, 153, 0.1); border-right: 3px solid #34d399; }
+.diff-warn { background: rgba(251, 191, 36, 0.1); border-right: 3px solid #fbbf24; }
+.diff-bad { background: rgba(248, 113, 113, 0.1); border-right: 3px solid #f87171; }
+.diff-info { background: rgba(96, 165, 250, 0.1); border-right: 3px solid #60a5fa; }
+
+.score-bar {
+    width: 100%;
+    height: 24px;
+    background: #334155;
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 8px 0;
+}
+.score-fill {
+    height: 100%;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: bold;
+    color: #000;
+    transition: width 0.5s;
+}
+
+/* Stats bar */
+.stats {
+    background: #1e293b;
+    padding: 8px 20px;
+    display: flex;
+    gap: 24px;
+    font-size: 0.75rem;
+    border-top: 1px solid #334155;
+    flex-wrap: wrap;
+}
+.stat { color: #94a3b8; }
+.stat span { color: #60a5fa; font-weight: bold; }
+
+/* Legend */
+.legend {
+    display: flex;
+    gap: 12px;
+    font-size: 0.7rem;
+    align-items: center;
+}
+.legend-item { display: flex; align-items: center; gap: 4px; }
+.legend-box {
+    width: 14px; height: 10px;
+    border: 2px solid transparent;
+    display: inline-block;
+}
+
+/* Element type colors in analysis */
+.type-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 0.65rem;
+    font-weight: bold;
+}
+.type-container { background: #3b82f6; color: white; }
+.type-text { background: #8b5cf6; color: white; }
+.type-button { background: #f59e0b; color: black; }
+.type-input { background: #10b981; color: white; }
+.type-image { background: #ef4444; color: white; }
+.type-separator { background: #6b7280; color: white; }
+
+/* Loading spinner */
+.spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #334155;
+    border-top-color: #60a5fa;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#loadingOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    flex-direction: column;
+    gap: 16px;
+}
+#loadingOverlay .spinner { width: 40px; height: 40px; border-width: 3px; }
+</style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="loadingOverlay">
+    <div class="spinner"></div>
+    <div>Loading analysis data...</div>
+</div>
+
+<header>
+    <h1>Debug — <code>{{ job.id }}</code></h1>
+    <span class="badge badge-vision">Vision</span>
+    <span class="badge badge-gen">Output</span>
+    <span class="badge badge-diff">Analysis</span>
+    <div class="legend">
+        <div class="legend-item">
+            <div class="legend-box" style="border-color:#ff5050;"></div><span>d0</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-box" style="border-color:#50c850;"></div><span>d1</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-box" style="border-color:#c8c832;"></div><span>d2</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-box" style="border-color:#ff32ff;"></div><span>text</span>
+        </div>
+    </div>
+    <a href="{% url 'converter:debug_data' job_id=job.id %}" target="_blank"
+       style="margin-right:auto;color:#60a5fa;font-size:0.75rem;">JSON ↗</a>
+    <a href="{% url 'converter:debug_compare_data' job_id=job.id %}" target="_blank"
+       style="color:#f59e0b;font-size:0.75rem;">Compare JSON ↗</a>
+</header>
+
+<!-- Tabs -->
+<div class="tabs">
+    <div class="tab active" data-tab="panels">3-Panel View</div>
+    <div class="tab" data-tab="compare">Slider Compare</div>
+    <div class="tab" data-tab="analysis">Analysis Report</div>
+</div>
+
+<!-- Tab 1: Three-panel view (original) -->
+<div class="tab-content active" id="tab-panels">
+    <div class="verdict">
+        <strong>How to diagnose:</strong>
+        If overlay (middle) differs from original (left) →
+        <strong style="color:#f87171;">Vision problem</strong>.
+        If overlay is correct but output (right) is wrong →
+        <strong style="color:#34d399;">Code Generation problem</strong>.
+    </div>
+    <div class="panels">
+        <div class="panel">
+            <div class="panel-header">
+                <div class="dot" style="background:#6b7280;"></div>
+                Original Image
+            </div>
+            <div class="panel-body">
+                <img src="{{ job.original_image.url }}" alt="original">
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-header">
+                <div class="dot" style="background:#7c3aed;"></div>
+                Vision Overlay
+            </div>
+            <div class="panel-body">
+                <img src="{% url 'converter:debug_overlay' job_id=job.id %}" alt="debug overlay">
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-header">
+                <div class="dot" style="background:#059669;"></div>
+                HTML/CSS Output
+            </div>
+            <div class="panel-body" style="padding:0;">
+                <iframe src="{% url 'converter:preview' job_id=job.id %}" title="Generated output"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab 2: Slider compare -->
+<div class="tab-content" id="tab-compare">
+    <div class="compare-container" id="compareContainer">
+        <div class="compare-label compare-label-left">Original</div>
+        <div class="compare-label compare-label-right">Generated Output</div>
+        <div class="compare-layer" id="compareLeft" style="z-index:2; overflow:hidden;">
+            <img src="{{ job.original_image.url }}" alt="original" id="compareOrigImg">
+        </div>
+        <div class="compare-layer" id="compareRight" style="z-index:1;">
+            <!-- Output rendered as screenshot via canvas -->
+            <iframe src="{% url 'converter:preview' job_id=job.id %}" title="output"
+                    id="compareIframe" style="width:100%; height:100%; border:none;"></iframe>
+        </div>
+        <div class="compare-slider" id="compareSlider" style="left:50%;"></div>
+    </div>
+</div>
+
+<!-- Tab 3: Analysis report -->
+<div class="tab-content" id="tab-analysis">
+    <div class="panels-2">
+        <div class="diff-panel" id="diffPanel">
+            <div style="text-align:center; padding:40px;">
+                <div class="spinner"></div>
+                <p style="margin-top:12px;">Loading analysis...</p>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-header">
+                <div class="dot" style="background:#dc2626;"></div>
+                Side-by-Side
+            </div>
+            <div class="panel-body" style="flex-direction:column; gap:8px; align-items:center;">
+                <div style="font-size:0.7rem; color:#94a3b8; text-align:center;">Original</div>
+                <img src="{{ job.original_image.url }}" alt="original" style="max-width:100%; border:1px solid #334155;">
+                <div style="font-size:0.7rem; color:#94a3b8; text-align:center; margin-top:8px;">Output</div>
+                <iframe src="{% url 'converter:preview' job_id=job.id %}" title="output"
+                        style="width:100%; flex:1; border:1px solid #334155; background:white;"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="stats">
+    <div class="stat">Image: <span>{{ job.analysis_metadata.image_w|default:"?" }}x{{ job.analysis_metadata.image_h|default:"?" }}</span></div>
+    <div class="stat">Regions: <span>{{ job.analysis_metadata.total_regions|default:"?" }}</span></div>
+    <div class="stat">Texts: <span>{{ job.analysis_metadata.text_elements|default:"?" }}</span></div>
+    <div class="stat">Time: <span>{{ job.processing_time_ms|default:"?" }}ms</span></div>
+</div>
+
+<script>
+// Tab switching
+document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    });
+});
+
+// Slider compare
+(function() {
+    const container = document.getElementById('compareContainer');
+    const slider = document.getElementById('compareSlider');
+    const leftLayer = document.getElementById('compareLeft');
+    let dragging = false;
+
+    function setSliderPos(x) {
+        const rect = container.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(100, ((x - rect.left) / rect.width) * 100));
+        slider.style.left = pct + '%';
+        leftLayer.style.width = pct + '%';
+    }
+
+    slider.addEventListener('mousedown', () => dragging = true);
+    document.addEventListener('mouseup', () => dragging = false);
+    document.addEventListener('mousemove', (e) => {
+        if (dragging) setSliderPos(e.clientX);
+    });
+    container.addEventListener('click', (e) => setSliderPos(e.clientX));
+
+    // Touch support
+    slider.addEventListener('touchstart', () => dragging = true);
+    document.addEventListener('touchend', () => dragging = false);
+    document.addEventListener('touchmove', (e) => {
+        if (dragging && e.touches.length) setSliderPos(e.touches[0].clientX);
+    });
+})();
+
+// Load analysis data
+(function() {
+    const compareUrl = '{% url "converter:debug_compare_data" job_id=job.id %}';
+
+    fetch(compareUrl)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('loadingOverlay').style.display = 'none';
+            renderAnalysis(data);
+        })
+        .catch(err => {
+            document.getElementById('loadingOverlay').style.display = 'none';
+            document.getElementById('diffPanel').innerHTML =
+                '<div style="color:#f87171;padding:20px;">Failed to load analysis: ' + err + '</div>';
+        });
+})();
+
+function renderAnalysis(data) {
+    const panel = document.getElementById('diffPanel');
+    let html = '';
+
+    // Overall score
+    const score = data.quality_score || 0;
+    const scoreColor = score >= 80 ? '#34d399' : score >= 60 ? '#fbbf24' : '#f87171';
+    html += `
+    <div class="diff-section">
+        <h3>Quality Score</h3>
+        <div class="score-bar">
+            <div class="score-fill" style="width:${score}%; background:${scoreColor};">${score}%</div>
+        </div>
+        <div style="font-size:0.75rem; color:#94a3b8; margin-top:4px;">
+            ${data.score_breakdown ? Object.entries(data.score_breakdown).map(
+                ([k,v]) => `${k}: ${v}%`
+            ).join(' | ') : ''}
+        </div>
+    </div>`;
+
+    // Element detection summary
+    html += `
+    <div class="diff-section">
+        <h3>Element Detection</h3>`;
+
+    if (data.element_summary) {
+        const es = data.element_summary;
+        for (const [type, info] of Object.entries(es)) {
+            const cls = 'type-' + type;
+            html += `<div class="diff-item diff-info">
+                <span class="type-badge ${cls}">${type}</span>
+                <span>${info.count} detected</span>
+            </div>`;
+        }
+    }
+    html += '</div>';
+
+    // Layout analysis
+    html += `
+    <div class="diff-section">
+        <h3>Layout Analysis</h3>`;
+
+    if (data.layout_analysis) {
+        for (const item of data.layout_analysis) {
+            const cls = item.level === 'good' ? 'diff-good' :
+                       item.level === 'warn' ? 'diff-warn' : 'diff-bad';
+            html += `<div class="diff-item ${cls}">${item.message}</div>`;
+        }
+    }
+    html += '</div>';
+
+    // Differences / issues
+    html += `
+    <div class="diff-section">
+        <h3>Detected Issues</h3>`;
+
+    if (data.issues && data.issues.length > 0) {
+        for (const issue of data.issues) {
+            const cls = issue.severity === 'error' ? 'diff-bad' :
+                       issue.severity === 'warning' ? 'diff-warn' : 'diff-info';
+            html += `<div class="diff-item ${cls}">
+                <strong>${issue.category}:</strong> ${issue.message}
+            </div>`;
+        }
+    } else {
+        html += '<div class="diff-item diff-good">No major issues detected</div>';
+    }
+    html += '</div>';
+
+    // Semantic tags
+    html += `
+    <div class="diff-section">
+        <h3>Semantic HTML</h3>`;
+
+    if (data.semantic_tags) {
+        for (const [tag, count] of Object.entries(data.semantic_tags)) {
+            html += `<div class="diff-item diff-info">
+                &lt;${tag}&gt; &mdash; ${count}x
+            </div>`;
+        }
+    }
+    html += '</div>';
+
+    // CSS features
+    html += `
+    <div class="diff-section">
+        <h3>CSS Features Used</h3>`;
+
+    if (data.css_features) {
+        for (const feat of data.css_features) {
+            html += `<div class="diff-item ${feat.used ? 'diff-good' : 'diff-warn'}">
+                ${feat.name}: ${feat.used ? 'Yes' : 'No'} ${feat.detail || ''}
+            </div>`;
+        }
+    }
+    html += '</div>';
+
+    panel.innerHTML = html;
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversion Result</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+            padding: 24px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .header h1 {
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .back-btn {
+            color: #60a5fa;
+            text-decoration: none;
+            padding: 8px 16px;
+            border: 1px solid #334155;
+            border-radius: 8px;
+        }
+        .back-btn:hover { background: #1e293b; }
+        .status-bar {
+            background: #1e293b;
+            padding: 16px 24px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            display: flex;
+            gap: 32px;
+            flex-wrap: wrap;
+        }
+        .status-item { color: #94a3b8; font-size: 0.9rem; }
+        .status-item span { color: #e2e8f0; font-weight: 600; }
+        .status-completed { color: #34d399 !important; }
+        .status-failed { color: #f87171 !important; }
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 24px;
+            height: calc(100vh - 200px);
+        }
+        .panel {
+            background: #1e293b;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .panel-header {
+            padding: 12px 20px;
+            background: #334155;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .panel-body {
+            flex: 1;
+            overflow: auto;
+            padding: 16px;
+        }
+        .code-view {
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 16px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: #a5f3fc;
+            height: 100%;
+            overflow: auto;
+        }
+        .preview-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            text-decoration: none;
+        }
+        .preview-btn:hover { background: #2563eb; }
+        .copy-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .copy-btn:hover { background: #2563eb; }
+        .tabs {
+            display: flex;
+            gap: 4px;
+        }
+        .tab {
+            padding: 6px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            background: transparent;
+            color: #94a3b8;
+            border: none;
+        }
+        .tab.active {
+            background: #475569;
+            color: #e2e8f0;
+        }
+        .error-box {
+            background: #451a1a;
+            border: 1px solid #f87171;
+            border-radius: 12px;
+            padding: 24px;
+            color: #fca5a5;
+        }
+        @media (max-width: 768px) {
+            .main-grid { grid-template-columns: 1fr; height: auto; }
+            .panel { min-height: 400px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Conversion Result</h1>
+        <a href="{% url 'converter:upload' %}" class="back-btn">New Upload</a>
+    </div>
+
+    <div class="status-bar">
+        <div class="status-item">
+            Status: <span class="{% if job.status == 'completed' %}status-completed{% elif job.status == 'failed' %}status-failed{% endif %}">
+                {{ job.get_status_display }}
+            </span>
+        </div>
+        {% if job.processing_time_ms %}
+        <div class="status-item">
+            Processing Time: <span>{{ job.processing_time_ms }}ms</span>
+        </div>
+        {% endif %}
+        {% if job.analysis_metadata %}
+        <div class="status-item">
+            Elements: <span>{{ job.analysis_metadata.total_regions|default:"—" }}</span>
+        </div>
+        <div class="status-item">
+            Text Blocks: <span>{{ job.analysis_metadata.text_elements|default:"—" }}</span>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if job.status == 'failed' %}
+    <div class="error-box">
+        <h3>Error</h3>
+        <p>{{ job.error_message }}</p>
+    </div>
+    {% else %}
+    <div class="main-grid">
+        <div class="panel">
+            <div class="panel-header">
+                <div class="tabs">
+                    <button class="tab active" onclick="showTab('html')">HTML</button>
+                    <button class="tab" onclick="showTab('css')">CSS</button>
+                    <button class="tab" onclick="showTab('combined')">Combined</button>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="copy-btn" onclick="copyCode()">Copy</button>
+                    <a href="{% url 'converter:preview' job_id=job.id %}" target="_blank" class="preview-btn">Preview</a>
+                    <a href="{% url 'converter:debug' job_id=job.id %}" target="_blank" class="preview-btn" style="background:#7c3aed;">Debug Vision</a>
+                    <a href="{% url 'converter:debug_data' job_id=job.id %}" target="_blank" class="preview-btn" style="background:#059669;">Debug JSON</a>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="code-view" id="codeView">{{ job.combined_output }}</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <script>
+        const codeData = {
+            html: document.getElementById('codeView') ? document.getElementById('codeView').textContent : '',
+            css: `{{ job.generated_css|escapejs }}`,
+            combined: document.getElementById('codeView') ? document.getElementById('codeView').textContent : '',
+        };
+
+        let currentTab = 'combined';
+
+        function showTab(tab) {
+            currentTab = tab;
+            document.getElementById('codeView').textContent = codeData[tab] || '';
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function copyCode() {
+            const text = document.getElementById('codeView').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = document.querySelector('.copy-btn');
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = 'Copy', 2000);
+            });
+        }
+    </script>
+</body>
+</html>

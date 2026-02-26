@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+.env.*
+
+# Database
+db.sqlite3
+db.sqlite3-journal
+
+# Media (user uploads & generated outputs)
+media/uploads/
+media/outputs/
+
+# Static files (collected)
+static/
+
+# Generated/debug output files
+*.generated.html
+*.analysis.json
+
+# Test samples output (generated HTML)
+test_samples/output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Claude
+.claude/
+
+# YOLO model weights & training data (too large for GitHub)
+*.pt
+ml_models/yolo_ui/dataset/
+ml_models/yolo_ui/runs/
