@@ -8,7 +8,39 @@ A pure computer-vision system that converts UI screenshots into pixel-accurate H
 
 ---
 
-## Quick Start
+## Quick Start — Copy & Paste
+
+Clone, install, and run in one go:
+
+```bash
+git clone https://github.com/maniUZqqz/Machine-vision-TO-code.git
+cd Machine-vision-TO-code
+pip install -r requirements.txt
+echo "DEBUG=True" > .env
+echo "SECRET_KEY=some-random-key" >> .env
+echo "DJANGO_SETTINGS_MODULE=config.settings" >> .env
+python manage.py migrate
+python test_images.py test_samples/input/1524.png --feedback
+```
+
+Optional extras:
+
+```bash
+# Feedback loop (Playwright — pixel comparison with original)
+pip install playwright
+playwright install chromium
+
+# YOLO enhancement (optional, works without it)
+pip install ultralytics
+
+# Run Django web UI
+python manage.py runserver
+# Open http://localhost:8000/
+```
+
+---
+
+## Detailed Setup
 
 ### 1. Install Dependencies
 
