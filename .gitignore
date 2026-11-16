@@ -50,3 +50,9 @@ Thumbs.db
 *.pt
 ml_models/yolo_ui/dataset/
 ml_models/yolo_ui/runs/
+
+# benchmark cache / outputs (generated, never committed)
+bench_cache/
+mv2code-out/
+*.egg-info/
+.pytest_cache/
