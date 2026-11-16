@@ -1,221 +1,74 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conversion Result</title>
+    <title>Conversion result</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', Tahoma, sans-serif;
-            background: #0f172a;
-            color: #e2e8f0;
-            min-height: 100vh;
-            padding: 24px;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 24px;
-        }
-        .header h1 {
-            font-size: 1.5rem;
-            background: linear-gradient(135deg, #60a5fa, #a78bfa);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .back-btn {
-            color: #60a5fa;
-            text-decoration: none;
-            padding: 8px 16px;
-            border: 1px solid #334155;
-            border-radius: 8px;
-        }
-        .back-btn:hover { background: #1e293b; }
-        .status-bar {
-            background: #1e293b;
-            padding: 16px 24px;
-            border-radius: 12px;
-            margin-bottom: 24px;
-            display: flex;
-            gap: 32px;
-            flex-wrap: wrap;
-        }
-        .status-item { color: #94a3b8; font-size: 0.9rem; }
-        .status-item span { color: #e2e8f0; font-weight: 600; }
-        .status-completed { color: #34d399 !important; }
-        .status-failed { color: #f87171 !important; }
-        .main-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 24px;
-            height: calc(100vh - 200px);
-        }
-        .panel {
-            background: #1e293b;
-            border-radius: 12px;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-        .panel-header {
-            padding: 12px 20px;
-            background: #334155;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-        .panel-body {
-            flex: 1;
-            overflow: auto;
-            padding: 16px;
-        }
-        .code-view {
-            background: #0f172a;
-            border-radius: 8px;
-            padding: 16px;
-            font-family: 'Consolas', 'Courier New', monospace;
-            font-size: 0.85rem;
-            line-height: 1.6;
-            white-space: pre-wrap;
-            word-break: break-all;
-            color: #a5f3fc;
-            height: 100%;
-            overflow: auto;
-        }
-        .preview-btn {
-            background: #3b82f6;
-            color: white;
-            border: none;
-            padding: 6px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.8rem;
-            text-decoration: none;
-        }
-        .preview-btn:hover { background: #2563eb; }
-        .copy-btn {
-            background: #3b82f6;
-            color: white;
-            border: none;
-            padding: 6px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.8rem;
-        }
-        .copy-btn:hover { background: #2563eb; }
-        .tabs {
-            display: flex;
-            gap: 4px;
-        }
-        .tab {
-            padding: 6px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.8rem;
-            background: transparent;
-            color: #94a3b8;
-            border: none;
-        }
-        .tab.active {
-            background: #475569;
-            color: #e2e8f0;
-        }
-        .error-box {
-            background: #451a1a;
-            border: 1px solid #f87171;
-            border-radius: 12px;
-            padding: 24px;
-            color: #fca5a5;
-        }
-        @media (max-width: 768px) {
-            .main-grid { grid-template-columns: 1fr; height: auto; }
-            .panel { min-height: 400px; }
-        }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 24px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
+        .header h1 { font-size: 1.4rem; background: linear-gradient(135deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .btn { color: #60a5fa; text-decoration: none; padding: 8px 16px; border: 1px solid #334155; border-radius: 8px; font-size: .9rem; background: transparent; cursor: pointer; }
+        .btn:hover { background: #1e293b; }
+        .btn.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+        .scores { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+        .score { background: #1e293b; border-radius: 12px; padding: 14px 20px; min-width: 150px; }
+        .score b { display: block; font-size: 1.5rem; color: #34d399; }
+        .score small { color: #94a3b8; }
+        .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 900px) { .compare { grid-template-columns: 1fr; } }
+        .panel { background: #1e293b; border-radius: 12px; overflow: hidden; }
+        .panel h2 { font-size: .9rem; padding: 10px 16px; color: #94a3b8; font-weight: 600; border-bottom: 1px solid #334155; }
+        .panel img { width: 100%; display: block; }
+        .panel iframe { width: 100%; height: 70vh; border: 0; background: #fff; }
+        .err { background: #3b1d1d; color: #fca5a5; padding: 16px; border-radius: 12px; }
+        details { margin-top: 20px; background: #1e293b; border-radius: 12px; padding: 12px 16px; }
+        pre { white-space: pre-wrap; word-break: break-all; font-size: .75rem; max-height: 50vh; overflow: auto; color: #cbd5e1; }
+        .note { color: #94a3b8; font-size: .8rem; margin-top: 8px; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Conversion Result</h1>
-        <a href="{% url 'converter:upload' %}" class="back-btn">New Upload</a>
-    </div>
-
-    <div class="status-bar">
-        <div class="status-item">
-            Status: <span class="{% if job.status == 'completed' %}status-completed{% elif job.status == 'failed' %}status-failed{% endif %}">
-                {{ job.get_status_display }}
-            </span>
+        <h1>Conversion result</h1>
+        <div>
+            {% if job.status == 'completed' %}
+            <a class="btn primary" href="{% url 'converter:download' job_id=job.id %}">Download ZIP</a>
+            <a class="btn" href="{% url 'converter:preview' job_id=job.id %}" target="_blank">Open page</a>
+            {% endif %}
+            <a class="btn" href="{% url 'converter:upload' %}">New upload</a>
         </div>
-        {% if job.processing_time_ms %}
-        <div class="status-item">
-            Processing Time: <span>{{ job.processing_time_ms }}ms</span>
-        </div>
-        {% endif %}
-        {% if job.analysis_metadata %}
-        <div class="status-item">
-            Elements: <span>{{ job.analysis_metadata.total_regions|default:"—" }}</span>
-        </div>
-        <div class="status-item">
-            Text Blocks: <span>{{ job.analysis_metadata.text_elements|default:"—" }}</span>
-        </div>
-        {% endif %}
     </div>
 
     {% if job.status == 'failed' %}
-    <div class="error-box">
-        <h3>Error</h3>
-        <p>{{ job.error_message }}</p>
-    </div>
+    <div class="err"><b>Conversion failed.</b><br>{{ job.error_message }}</div>
     {% else %}
-    <div class="main-grid">
-        <div class="panel">
-            <div class="panel-header">
-                <div class="tabs">
-                    <button class="tab active" onclick="showTab('html')">HTML</button>
-                    <button class="tab" onclick="showTab('css')">CSS</button>
-                    <button class="tab" onclick="showTab('combined')">Combined</button>
-                </div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <button class="copy-btn" onclick="copyCode()">Copy</button>
-                    <a href="{% url 'converter:preview' job_id=job.id %}" target="_blank" class="preview-btn">Preview</a>
-                    <a href="{% url 'converter:debug' job_id=job.id %}" target="_blank" class="preview-btn" style="background:#7c3aed;">Debug Vision</a>
-                    <a href="{% url 'converter:debug_data' job_id=job.id %}" target="_blank" class="preview-btn" style="background:#059669;">Debug JSON</a>
-                </div>
-            </div>
-            <div class="panel-body">
-                <div class="code-view" id="codeView">{{ job.combined_output }}</div>
-            </div>
-        </div>
+    <div class="scores">
+        <div class="score"><b>{{ job.mode }}</b><small>mode</small></div>
+        {% if job.analysis_metadata.scores.ssim %}
+        <div class="score"><b>{{ job.analysis_metadata.scores.ssim }}</b><small>SSIM vs. screenshot</small></div>
+        <div class="score"><b>{{ job.analysis_metadata.scores.pixel_similarity }}</b><small>pixel similarity</small></div>
+        <div class="score"><b>{{ job.analysis_metadata.scores.editable_share }}</b><small>editable share (real HTML/CSS)</small></div>
+        {% endif %}
+        <div class="score"><b>{{ job.analysis_metadata.total_regions|default:"-" }}</b><small>regions</small></div>
+        <div class="score"><b>{{ job.analysis_metadata.text_elements|default:"-" }}</b><small>text lines ({{ job.analysis_metadata.ocr|default:"-" }})</small></div>
+        <div class="score"><b>{{ job.processing_time_ms|default:"-" }} ms</b><small>processing time</small></div>
     </div>
+    {% if job.analysis_metadata.scores.unavailable %}
+    <p class="note">Scores need a headless browser (<code>pip install playwright &amp;&amp; playwright install chromium</code>): {{ job.analysis_metadata.scores.unavailable }}</p>
     {% endif %}
 
-    <script>
-        const codeData = {
-            html: document.getElementById('codeView') ? document.getElementById('codeView').textContent : '',
-            css: `{{ job.generated_css|escapejs }}`,
-            combined: document.getElementById('codeView') ? document.getElementById('codeView').textContent : '',
-        };
+    <div class="compare">
+        <div class="panel"><h2>Original screenshot</h2><img src="{{ job.original_image.url }}" alt="original"></div>
+        <div class="panel"><h2>Generated page</h2><iframe src="{% url 'converter:preview' job_id=job.id %}" title="generated"></iframe></div>
+    </div>
 
-        let currentTab = 'combined';
-
-        function showTab(tab) {
-            currentTab = tab;
-            document.getElementById('codeView').textContent = codeData[tab] || '';
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-        }
-
-        function copyCode() {
-            const text = document.getElementById('codeView').textContent;
-            navigator.clipboard.writeText(text).then(() => {
-                const btn = document.querySelector('.copy-btn');
-                btn.textContent = 'Copied!';
-                setTimeout(() => btn.textContent = 'Copy', 2000);
-            });
-        }
-    </script>
+    <details>
+        <summary>HTML / CSS</summary>
+        <pre>{{ job.combined_output }}</pre>
+    </details>
+    <p class="note">The scores are strict: SSIM and mean pixel similarity of the rendered page against the screenshot, and the share of
+        the page area that is real HTML/CSS rather than an embedded image.</p>
+    {% endif %}
 </body>
 </html>

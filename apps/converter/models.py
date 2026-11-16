@@ -18,6 +18,8 @@ class ConversionJob(models.Model):
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.PENDING
     )
+    mode = models.CharField(max_length=16, default='responsive',
+                            help_text='responsive (flex/table) or exact (absolute)')
     error_message = models.TextField(blank=True, default='')
     processing_time_ms = models.IntegerField(null=True, blank=True)
     generated_html = models.TextField(blank=True, default='')

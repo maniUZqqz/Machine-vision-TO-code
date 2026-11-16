@@ -6,6 +6,10 @@ class ImageUploadForm(forms.Form):
         label='Upload Screenshot',
         help_text='Upload a screenshot of a dashboard or web page'
     )
+    mode = forms.ChoiceField(
+        choices=[('responsive', 'Responsive (flex / table, editable)'), ('exact', 'Exact (pixel-faithful, absolute)')],
+        initial='responsive', required=False, label='Output mode',
+    )
     languages = forms.MultipleChoiceField(
         choices=[
             ('en', 'English'),
