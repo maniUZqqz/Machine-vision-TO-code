@@ -6,6 +6,7 @@ from django.http import HttpResponse, JsonResponse
 from django.views import View
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 
 import numpy as np
 from PIL import Image
@@ -451,12 +452,14 @@ class DebugCompareDataView(View):
         return JsonResponse(data, json_dumps_params={'indent': 2, 'ensure_ascii': False})
 
 
+@method_decorator(csrf_exempt, name='dispatch')   # stateless REST endpoint (curl/scripts); the HTML upload form keeps CSRF
 class APIConvertView(View):
     def post(self, request):
         if 'image' not in request.FILES:
             return JsonResponse({'error': 'No image provided'}, status=400)
 
-        languages = request.POST.getlist('languages') or ['fa', 'en']
+        # accepts repeated fields (languages=fa&languages=en) and comma lists (languages=fa,en)
+        languages = [x.strip() for v in request.POST.getlist('languages') for x in v.split(',') if x.strip()] or ['fa', 'en']
         mode = request.POST.get('mode', 'responsive')
         if mode not in ('responsive', 'exact'):
             return JsonResponse({'error': "mode must be 'responsive' or 'exact'"}, status=400)

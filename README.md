@@ -22,6 +22,8 @@ pip install -e ".[web]"                # Django web app
 pip install -e ".[ocr-easyocr]"        # optional, heavy (torch): ~2x more accurate on tiny Persian text
 ```
 
+If `playwright install` cannot download Chromium (blocked/slow network), point `MV2CODE_CHROME` at an existing Chromium / chrome-headless-shell executable instead.
+
 Pinned, known-good versions: `requirements.txt`. The fonts (Vazirmatn, Inter - SIL OFL 1.1) ship inside the package (`mv2code/fonts`).
 Pillow built with `raqm` (the default Linux wheels) gives the most accurate text-width fitting without a browser.
 

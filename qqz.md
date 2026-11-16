@@ -12,7 +12,7 @@ git clone https://github.com/maniUZqqz/Machine-vision-TO-code.git
 cd Machine-vision-TO-code
 sudo apt install tesseract-ocr tesseract-ocr-fas tesseract-ocr-eng        # Linux; Windows: UB-Mannheim build + fas/eng data
 pip install -e ".[ocr-tesseract,browser,web]"
-python -m playwright install chromium
+python -m playwright install chromium     # blocked network? set MV2CODE_CHROME=/path/to/an/existing/chromium instead
 
 # convert a screenshot (responsive flex/table HTML + tree.json + honest scores)
 mv2code test_samples/input/1524.png -o out --mode responsive --score

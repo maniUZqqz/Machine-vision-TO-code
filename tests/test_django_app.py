@@ -77,3 +77,15 @@ def test_corrupt_upload_fails_cleanly(client):
     r = client.post("/api/convert/", {"image": SimpleUploadedFile("bad.png", b"not a png", "image/png")})
     # Django's ImageField is not used on the API route: the job itself must fail with a message
     assert r.status_code == 200 and r.json()["status"] == "failed" and r.json()["error"]
+
+
+def test_api_works_like_curl_without_csrf_cookie(client):
+    """`curl -F image=@x.png .../api/convert/` has no CSRF cookie: the REST endpoint must still work (the HTML form stays protected)."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from django.test import Client
+    c = Client(enforce_csrf_checks=True)
+    r = c.post("/api/convert/", {"image": SimpleUploadedFile("ui.png", _png(), "image/png"),
+                                 "mode": "exact", "languages": "fa,en"})
+    assert r.status_code == 200, r.content[:300]
+    assert r.json()["status"] == "completed"
+    assert c.post("/", {}).status_code == 403

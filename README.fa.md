@@ -22,6 +22,8 @@ pip install -e ".[web]"                # برنامهٔ وب (Django)
 pip install -e ".[ocr-easyocr]"        # اختیاری و سنگین (torch)؛ روی متنِ فارسیِ ریز حدود دو برابر دقیق‌تر
 ```
 
+اگر `playwright install` نتواند Chromium را دانلود کند (شبکهٔ بسته/کند)، متغیرِ `MV2CODE_CHROME` را روی یک فایلِ اجراییِ Chromium یا chrome-headless-shell که از قبل دارید بگذارید.
+
 نسخه‌های سنجیده‌شده: `requirements.txt`. فونت‌ها (وزیرمتن و Inter با مجوز SIL OFL 1.1) داخلِ بسته هستند (`mv2code/fonts`).
 
 ## استفاده
