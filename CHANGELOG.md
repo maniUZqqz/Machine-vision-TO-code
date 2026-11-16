@@ -12,13 +12,17 @@ First tagged release. A rewrite of the converter around an honest benchmark; the
   Pipeline: smooth-pixel region analysis -> ink-tight text lines -> Persian-aware OCR (Tesseract `fas+eng` default, EasyOCR optional, or your own `ocr_lines`) -> font/size/weight/colour by analysis-by-synthesis -> XY-cut layout (flex rows/columns, tables) -> HTML/CSS -> optional browser feedback loop.
 - Component tree JSON (`docs/tree-json.md`) for site builders.
 - Django web app: upload -> original and generated page side by side with honest scores -> ZIP; REST `POST /api/convert/`.
-- 54 pytest tests (unit per stage, CLI and Django end-to-end, golden pages with score thresholds, browser stages), GitHub Actions workflow (`.github/workflows/ci.yml`), README in Persian and English, `docs/yolo.md`.
+- 55 pytest tests (unit per stage, CLI and Django end-to-end, golden pages with score thresholds, browser stages), GitHub Actions workflow (`.github/workflows/ci.yml`), README in Persian and English, `docs/yolo.md`.
 - Bundled fonts: Vazirmatn and Inter (SIL OFL 1.1, licences in `mv2code/fonts/`).
 
 ### Changed
 - `qqz.md` rewritten: the v1 claim "91.4% / 95.5% pixel similarity" is **withdrawn** (that metric gives a blank page ~88%).
 - Benchmark default is `--refine off` (deterministic: re-running reproduces the committed `bench/results*.json` exactly).
 - `DJANGO_ENV=production` now refuses the development fallback `SECRET_KEY` (set a real one in the environment).
+
+### Fixed (found in the final clean-room check)
+- `POST /api/convert/` answered `403 CSRF verification failed` to plain `curl -F image=@x.png ...` (the Django test client does not enforce CSRF, so the tests did not see it). The REST endpoint is now CSRF-exempt (stateless; the HTML upload form stays protected) and accepts `languages=fa,en` as well as repeated fields. Test added with `enforce_csrf_checks=True`.
+- `playwright install chromium` can be blocked on some networks: README/qqz.md now say to point `MV2CODE_CHROME` at an existing Chromium.
 
 ### Measured (v1 -> v2, same benchmark; v1 on a 6-page subset + the 2 real samples because EasyOCR needs ~2 min/page on 2 CPUs)
 - Persian text present as real text 26.3% -> 82.0% (same 6 pages; 62.4% on all 80); Persian CER 64.0% -> 13.3% (31.3% on all 80).
