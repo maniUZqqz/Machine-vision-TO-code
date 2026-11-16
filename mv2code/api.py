@@ -57,7 +57,8 @@ def convert(image, mode: str = "responsive", lang: str = "auto", ocr: str = "aut
                               seconds=dict(load=round(t1 - t0, 3), analyze=round(t2 - t1, 3), ocr=round(t3 - t2, 3),
                                            build=round(t4 - t3, 3), refine=round(t5 - t4, 3), total=round(t5 - t0, 3)),
                               refine=refine_report))
-    result["_root"] = root
+    if opts.get("return_root"):          # internal/debug: the live Node tree (not JSON serialisable)
+        result["_root"] = root
     return result
 
 

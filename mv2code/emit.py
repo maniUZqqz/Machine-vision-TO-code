@@ -173,9 +173,10 @@ class Emitter:
                 "div,section,header,footer,aside,nav,table,button,input,p,h1,h2,h3{max-width:100%}\n"
                 "p,h1,h2,h3,h4,h5,h6{margin:0;font-weight:inherit}\n"
                 "button,input{font:inherit;margin:0}\n"
-                "hr{border:0;margin:0}\n")
-        bp = int(max(640, min(self.W - 1, 0.72 * self.W))) if self.mode == "responsive" else 0
-        mq = ("\n@media (max-width:%dpx){.r{flex-wrap:wrap}}" % bp) if bp else ""
+                "hr{border:0;margin:0}\n"
+                "body{overflow-wrap:anywhere}\n")
+        bp = int(max(640, min(self.W - 1, 0.93 * self.W))) if self.mode == "responsive" else 0
+        mq = ("\n@media (max-width:%dpx){.r{flex-wrap:wrap}.button,.badge,.nw{white-space:normal}}" % bp) if bp else ""
         css = self.sheet.css() + ("\n" + "\n".join(self.extra_css) if self.extra_css else "") + mq
         css = self.apply_vars(base, css)
         return css
@@ -252,11 +253,18 @@ class Emitter:
                 d.setdefault("max-width", "100%")
             if n.rtl != self.rtl_page and not multi:
                 d["text-align"] = "right" if n.rtl else "left"
+        a = self.adj.get(n.id, {})
+        if (a.get("ox") or a.get("oy")) and not exact:
+            d["position"] = "relative"           # sub-4px visual correction found by the feedback loop
+            d["left"] = px(a.get("ox", 0))
+            d["top"] = px(a.get("oy", 0))
         tg = self.heading_tag(n) or ("p" if multi else "div")
         if tg == "div" and self.opts.get("inline_text"):
             tg = "span"
+        if not multi and not exact:
+            d["white-space"] = "nowrap"   # one line in the screenshot: keep it one line (wraps below the breakpoint)
         cls = self.sheet.cls(d)
-        return self.tag(tg, cls, attrs, inner, nid=n.id)
+        return self.tag(tg, cls, attrs, inner, nid=n.id, extra_cls="" if (multi or exact) else "nw")
 
     def icon_html(self, n: Node, slot: Dict[str, str]) -> str:
         w, h = n.box[2], n.box[3]
@@ -308,9 +316,10 @@ class Emitter:
         slot = {"position": "absolute"}
         if n.role == "text":
             lb = n.lbox or n.box
-            slot.update({"left": px(lb[0] - ox), "top": px(lb[1] - oy), "width": px(lb[2] + 2), "height": px(lb[3])})
+            a = self.adj.get(n.id, {})
+            slot.update({"left": px(lb[0] - ox + a.get("ox", 0)), "top": px(lb[1] - oy + a.get("oy", 0)), "width": px(lb[2] + 2), "height": px(lb[3])})
             if n.rtl and len(n.lines) == 1:
-                slot.update({"left": px(lb[0] - ox - 1), "width": px(lb[2] + 2)})
+                slot.update({"left": px(lb[0] - ox - 1 + a.get("ox", 0)), "width": px(lb[2] + 2)})
             return self.text_html(n, slot, exact=True)
         slot.update({"left": px(x - ox), "top": px(y - oy), "width": px(w), "height": px(h)})
         if n.role == "icon":
@@ -620,7 +629,7 @@ class Emitter:
         if n.role == "text":
             s = dict(slot)
             if len(n.lines) > 1 and "flex" not in s:
-                s.setdefault("width", px(n.box[2] + max(3, n.box[2] * 0.02)))
+                s.setdefault("max-width", px(n.box[2] * 1.03 + 3))
             return self.text_html(n, s)
         if n.role == "icon":
             return self.icon_html(n, slot)

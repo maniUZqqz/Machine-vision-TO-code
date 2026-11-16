@@ -209,7 +209,10 @@ class EasyOcrBackend(Backend):
             if not res:
                 out.append(OcrResult("", 0.0))
                 continue
-            res = sorted(res, key=lambda r: -r[0][0][0])  # right-to-left by x for RTL scripts
+            res = sorted(res, key=lambda r: r[0][0][0])            # left-to-right by x
+            from . import persian
+            if persian.script_ratio(" ".join(r[1] for r in res)) >= 0.5:
+                res = res[::-1]                                       # Arabic-script line: logical order is right-to-left
             text = " ".join(r[1] for r in res)
             out.append(OcrResult(text, float(np.mean([r[2] for r in res])), len(res)))
         return out

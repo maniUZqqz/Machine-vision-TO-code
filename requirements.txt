@@ -9,9 +9,11 @@ Pillow==12.3.0
 #             easyocr>=1.7          (heavy, pulls torch; optional backend)
 #   Browser:  playwright==1.63.0    (+ playwright install chromium)  -> feedback loop, --score, benchmark
 #   Web UI:   Django==4.2.30
+python-dotenv==1.2.4
 #   Benchmark/tests: rapidfuzz==3.14.5, pytest==9.2.0
 pytesseract==0.3.13
 playwright==1.63.0
 Django==4.2.30
+python-dotenv==1.2.4
 rapidfuzz==3.14.5
 pytest==9.2.0

@@ -90,9 +90,46 @@ def _key(k):
     return k.node.id if (k.kind == "item" and k.node is not None) else f"g{k.gid}"
 
 
-def update_adjust(root, dom: Dict[str, list], adj: Dict, rtl: bool, damp: float = 1.0) -> Dict:
-    """One correction step: font scale per text node, margin deltas per flow item."""
+def _ink_bbox(img: np.ndarray, box, color, pad: int = 6):
+    """Ink box (x0, y0, x1, y1) of text of ``color`` inside ``box`` (+pad) of ``img``; None if nothing found."""
+    H, W = img.shape[:2]
+    x0, y0 = max(0, int(box[0]) - pad), max(0, int(box[1]) - pad)
+    x1, y1 = min(W, int(box[0] + box[2]) + pad), min(H, int(box[1] + box[3]) + pad)
+    if x1 - x0 < 3 or y1 - y0 < 3:
+        return None
+    c = img[y0:y1, x0:x1].astype(np.int16)
+    flat = c.reshape(-1, 3)
+    vals, cnt = np.unique(flat[:: max(1, len(flat) // 8000)], axis=0, return_counts=True)
+    bg = vals[cnt.argmax()]
+    fg = np.array(color if color is not None else (0, 0, 0), np.float64)
+    span = float(np.abs(fg - bg).max())
+    if span < 40:
+        return None
+    m = np.abs(c - fg).max(axis=2) <= 0.45 * span
+    ys, xs = np.nonzero(m)
+    if len(xs) < 6:
+        return None
+    return (x0 + xs.min(), y0 + ys.min(), x0 + xs.max() + 1, y0 + ys.max() + 1)
+
+
+def update_adjust(root, dom: Dict[str, list], adj: Dict, rtl: bool, damp: float = 1.0, rendered=None) -> Dict:
+    """One correction step: font scale per text node, margin deltas per flow item, pixel offsets per text."""
     new = copy.deepcopy(adj)
+    if rendered is not None:
+        for n in root.walk():
+            if n.role != "text":
+                continue
+            tb = n.box
+            rb = _ink_bbox(rendered, tb, n.color)
+            if rb is None:
+                continue
+            tcx, tcy = tb[0] + tb[2] / 2.0, tb[1] + tb[3] / 2.0
+            rcx, rcy = (rb[0] + rb[2]) / 2.0, (rb[1] + rb[3]) / 2.0
+            dx, dy = tcx - rcx, tcy - rcy
+            e = new.setdefault(n.id, {})
+            if abs(dx) <= 4.5 and abs(dy) <= 4.5:      # only small, safe pixel nudges
+                e["ox"] = float(np.clip(e.get("ox", 0.0) + dx * damp, -4.5, 4.5))
+                e["oy"] = float(np.clip(e.get("oy", 0.0) + dy * damp, -4.5, 4.5))
     for n in root.walk():
         if n.role != "text" or len(n.lines) != 1:
             continue
@@ -106,7 +143,7 @@ def update_adjust(root, dom: Dict[str, list], adj: Dict, rtl: bool, damp: float 
             if abs(r - 1) > 0.012:
                 e = new.setdefault(n.id, {})
                 e["scale"] = float(np.clip(e.get("scale", 1.0) * (1 + (r - 1) * damp), 0.8, 1.25))
-    for plan in _plans(root):
+    for plan in _plans(root) if os.environ.get('MV2CODE_REFINE_GAPS', '0') == '1' else ():
         for p in _walk_plan(plan):
             if p.kind not in ("col", "row") or len(p.kids) < 2:
                 continue
@@ -155,7 +192,7 @@ def refine(rgb: np.ndarray, root, emit_fn: Callable[[Dict], dict], browser, asse
                 break
             if it == iterations:
                 break
-            adj = update_adjust(root, data["dom"], adj, rtl, damp=0.9)
+            adj = update_adjust(root, data["dom"], adj, rtl, damp=0.9, rendered=img)
         return best[1], dict(ssim_steps=scores, best_ssim=round(best[0], 4), iterations=len(scores) - 1)
     finally:
         pr.close()

@@ -19,7 +19,7 @@ dependencies = [
 ocr-tesseract = ["pytesseract>=0.3.10"]            # also needs the `tesseract` binary + fas/eng language data
 ocr-easyocr = ["easyocr>=1.7"]                     # heavy: pulls torch
 browser = ["playwright==1.63.0"]                   # feedback loop + --score (needs a Chromium)
-web = ["Django>=4.2,<5.0"]
+web = ["Django>=4.2,<5.0", "python-dotenv>=1.0"]
 yolo = ["ultralytics>=8.0"]                        # optional detector; no training happens on the server
 bench = ["rapidfuzz>=3.0", "playwright==1.63.0", "pytesseract>=0.3.10"]
 dev = ["pytest>=7", "rapidfuzz>=3.0"]
