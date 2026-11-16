@@ -12,7 +12,7 @@ from PIL import Image
 
 from .models import ConversionJob
 from .forms import ImageUploadForm
-from .services import ConversionService, _get_pipeline
+from .services import ConversionService, _get_pipeline, build_zip
 
 
 class UploadView(View):
@@ -33,6 +33,7 @@ class UploadView(View):
             job = ConversionJob.objects.create(
                 original_image=form.cleaned_data['image'],
                 languages=languages,
+                mode=form.cleaned_data.get('mode') or 'responsive',
             )
             service = ConversionService()
             service.process_job(job)
@@ -48,6 +49,17 @@ class ResultView(View):
         # Allow inline scripts and iframe content
         response['Content-Security-Policy'] = "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;"
         return response
+
+
+class DownloadZipView(View):
+    """GET /download/<id>/ - index.html + fonts/ + tree.json + report.json + original.png."""
+    def get(self, request, job_id):
+        job = get_object_or_404(ConversionJob, id=job_id)
+        if job.status != ConversionJob.Status.COMPLETED:
+            return HttpResponse('Job is not finished', status=409)
+        resp = HttpResponse(build_zip(job), content_type='application/zip')
+        resp['Content-Disposition'] = f'attachment; filename="mv2code-{job.id}.zip"'
+        return resp
 
 
 class PreviewView(View):
@@ -445,9 +457,13 @@ class APIConvertView(View):
             return JsonResponse({'error': 'No image provided'}, status=400)
 
         languages = request.POST.getlist('languages') or ['fa', 'en']
+        mode = request.POST.get('mode', 'responsive')
+        if mode not in ('responsive', 'exact'):
+            return JsonResponse({'error': "mode must be 'responsive' or 'exact'"}, status=400)
         job = ConversionJob.objects.create(
             original_image=request.FILES['image'],
             languages=languages,
+            mode=mode,
         )
 
         service = ConversionService()
@@ -459,6 +475,9 @@ class APIConvertView(View):
             'html': job.generated_html,
             'css': job.generated_css,
             'processing_time_ms': job.processing_time_ms,
+            'error': job.error_message,
+            'scores': (job.analysis_metadata or {}).get('scores'),
+            'tree': (job.analysis_metadata or {}).get('tree'),
         })
 
 

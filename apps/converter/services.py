@@ -1,204 +1,148 @@
-import os
-import sys
-import time
-import logging
-import traceback
-import base64
+"""Glue between the Django app and the ``mv2code`` package.
 
-import cv2
+The web app is a thin shell: it stores the upload, calls ``mv2code.convert`` and keeps the
+result (HTML, component tree, report and - when a headless browser is available - honest
+scores) on the job.  The original v1 engine (``vision_engine`` + ``code_generator``) is still
+importable for the old debug views; set ``MV2CODE_ENGINE=legacy`` to convert with it.
+"""
+import io
+import logging
+import os
+import time
+import traceback
+
 import numpy as np
 from PIL import Image
 
 from .models import ConversionJob
-from vision_engine.pipeline import create_default_pipeline
-from vision_engine.models.page import PageStructure
-from vision_engine.models.elements import BoundingBox
-from code_generator.generator import CodeGenerator
 
 logger = logging.getLogger(__name__)
 
-# Fix Windows encoding for EasyOCR
-os.environ['PYTHONIOENCODING'] = 'utf-8'
+os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
 
-
-def _rescale_to_original(context):
-    """Scale element bboxes from working-image space back to original image space.
-
-    When ImagePreprocessor resizes a large image (>1600px), all element bboxes
-    are in the resized coordinate space. The feedback loop renders HTML at the
-    ORIGINAL image dimensions, so bboxes must be scaled back to match.
-    IMAGE element data URIs are re-cropped from the original image for fidelity.
-    """
-    orig_w = getattr(context, 'original_width', 0)
-    orig_h = getattr(context, 'original_height', 0)
-    if not orig_w or not orig_h:
-        return
-    if orig_w == context.width and orig_h == context.height:
-        return
-
-    sx = orig_w / context.width
-    sy = orig_h / context.height
-    orig_img = context.original_image
-
-    def _make_data_uri(img, bbox):
-        x1 = max(0, bbox.x)
-        y1 = max(0, bbox.y)
-        x2 = min(orig_w, bbox.x2)
-        y2 = min(orig_h, bbox.y2)
-        if x2 <= x1 or y2 <= y1:
-            return None
-        crop = img[y1:y2, x1:x2]
-        bgr = cv2.cvtColor(crop, cv2.COLOR_RGB2BGR)
-        ok, buf = cv2.imencode('.jpg', bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
-        if not ok:
-            return None
-        b64 = base64.b64encode(buf.tobytes()).decode('ascii')
-        return f'data:image/jpeg;base64,{b64}'
-
-    def _scale(elements):
-        for e in elements:
-            b = e.bbox
-            new_bbox = BoundingBox(
-                max(0, int(round(b.x * sx))),
-                max(0, int(round(b.y * sy))),
-                max(1, int(round(b.width * sx))),
-                max(1, int(round(b.height * sy))),
-            )
-            e.bbox = new_bbox
-            if (e.element_type.value == 'image'
-                    and getattr(e, 'image_data_uri', None)):
-                e.image_data_uri = _make_data_uri(orig_img, new_bbox)
-            if getattr(e, 'bg_image_data_uri', None):
-                e.bg_image_data_uri = _make_data_uri(orig_img, new_bbox)
-            _scale(e.children)
-
-    _scale(context.regions)
-    _scale(context.text_elements)
-    context.width = orig_w
-    context.height = orig_h
-
-
-# Singleton pipeline (expensive to recreate due to EasyOCR model loading)
+# --------------------------------------------------------------------------- legacy (v1) bits
 _pipeline = None
-_generator = None
 
 
 def _get_pipeline():
+    """The v1 vision pipeline (EasyOCR based). Only used by the legacy debug views."""
     global _pipeline
     if _pipeline is None:
-        logger.info("Initializing vision pipeline (first request may be slow)...")
+        from vision_engine.pipeline import create_default_pipeline
         _pipeline = create_default_pipeline()
     return _pipeline
 
 
-def _get_generator():
-    global _generator
-    if _generator is None:
-        _generator = CodeGenerator()
-    return _generator
+def engine_name() -> str:
+    return os.environ.get('MV2CODE_ENGINE', 'mv2code').strip().lower()
+
+
+# --------------------------------------------------------------------------- scoring helper
+def _score(rgb, result):
+    """Honest scores (SSIM, pixel similarity, editable share) when a headless browser exists."""
+    try:
+        from mv2code.browser import Browser
+        from mv2code.score import compare
+    except Exception as e:  # playwright not installed
+        return {'unavailable': f'{type(e).__name__}: {e}'}
+    try:
+        photos = [n['box'] for n in _walk(result['tree_json']) if n.get('role') == 'image']
+        with Browser() as br:
+            return compare(rgb, result['html'], result['assets'], br, photo_boxes=photos)
+    except Exception as e:
+        return {'unavailable': f'{type(e).__name__}: {e}'}
+
+
+def _walk(node):
+    yield node
+    for c in node.get('children', []) or []:
+        yield from _walk(c)
 
 
 class ConversionService:
-    """
-    Orchestrates the full conversion: image -> vision pipeline -> code generator.
-    This is the ONLY place where Django code touches the vision engine.
-    """
+    """Orchestrates one conversion job."""
 
     def process_job(self, job: ConversionJob) -> None:
         job.status = ConversionJob.Status.PROCESSING
         job.save(update_fields=['status'])
-
-        start_time = time.monotonic()
-
+        start = time.monotonic()
         try:
-            # Load image
-            image = Image.open(job.original_image.path).convert('RGB')
-            image_array = np.array(image)
-            logger.info(f"Processing image: {image_array.shape}")
-
-            # Run vision pipeline
-            pipeline = _get_pipeline()
-            context = pipeline.run(image_array)
-            logger.info(
-                f"Pipeline done: {len(context.regions)} regions, "
-                f"{len(context.text_elements)} text elements"
-            )
-
-            # Scale element bboxes back to original image space if image was resized
-            _rescale_to_original(context)
-
-            # Collect orphan text elements (not assigned to any region)
-            # These are standalone text like page titles, headings, etc.
-            orphan_texts = [
-                t for t in context.text_elements if t.parent_id is None
-            ]
-
-            # Sort root elements by area DESCENDING so that large background
-            # containers get lower z-index than smaller UI elements.
-            # This prevents a large mis-detected container from covering smaller
-            # correctly-detected elements (e.g. the yellow stat card being hidden
-            # behind a wide teal container that spans the whole stats bar).
-            all_root = context.regions + orphan_texts
-            root_elements = sorted(all_root, key=lambda e: e.bbox.area, reverse=True)
-            # Detect dark top-band (browser chrome artifact) on light pages
-            top_border = None
-            bg_r, bg_g, bg_b = context.page_background
-            page_bg_lum = 0.2126 * bg_r + 0.7152 * bg_g + 0.0722 * bg_b
-            if page_bg_lum >= 80 and image_array.shape[0] > 10:
-                top_rows = image_array[:5, :, :]
-                row_means = top_rows.mean(axis=(1, 2))
-                band_h = 0
-                for rm in row_means:
-                    if rm < 100:
-                        band_h += 1
-                    else:
-                        break
-                if band_h >= 2:
-                    band_color = tuple(int(c) for c in top_rows[:band_h, :, :].mean(axis=(0, 1)))
-                    top_border = (band_h, band_color)
-
-            page = PageStructure(
-                width=context.width,
-                height=context.height,
-                background_color=context.page_background,
-                root_elements=root_elements,
-                text_direction=getattr(context, 'page_direction', 'ltr'),
-                top_border=top_border,
-            )
-
-            # Generate HTML/CSS
-            generator = _get_generator()
-            result = generator.generate(page)
-
-            # Run feedback loop for quality comparison
-            similarity = None
-            try:
-                from vision_engine.feedback_loop import FeedbackLoop
-                feedback = FeedbackLoop()
-                fb_result = feedback.compare_only(image_array, result['combined'])
-                similarity = fb_result.get('similarity')
-                logger.info(f"Feedback similarity: {similarity:.1%}")
-            except Exception as fb_err:
-                logger.warning(f"Feedback loop skipped: {fb_err}")
-
-            # Save results
-            job.generated_html = result['html']
-            job.generated_css = result['css']
-            job.combined_output = result['combined']
+            if engine_name() == 'legacy':
+                self._process_legacy(job)
+            else:
+                self._process_v2(job)
+            job.processing_time_ms = int((time.monotonic() - start) * 1000)
             job.status = ConversionJob.Status.COMPLETED
-            job.processing_time_ms = int(
-                (time.monotonic() - start_time) * 1000
-            )
-            job.analysis_metadata = {
-                'total_regions': sum(1 for _ in page.walk()),
-                'text_elements': len(context.text_elements),
-                'similarity': similarity,
-            }
             job.save()
-            logger.info(f"Job {job.id} completed in {job.processing_time_ms}ms")
-
+            logger.info('Job %s completed in %sms', job.id, job.processing_time_ms)
         except Exception as e:
-            logger.error(f"Job {job.id} failed: {e}\n{traceback.format_exc()}")
+            logger.error('Job %s failed: %s\n%s', job.id, e, traceback.format_exc())
             job.status = ConversionJob.Status.FAILED
-            job.error_message = f"{type(e).__name__}: {e}"
+            job.error_message = f'{type(e).__name__}: {e}'
             job.save(update_fields=['status', 'error_message'])
+
+    # ---- v2
+    def _process_v2(self, job: ConversionJob) -> None:
+        import mv2code
+        from mv2code.imaging import load_image
+        langs = list(job.languages or [])
+        lang = 'auto'
+        if langs == ['fa']:
+            lang = 'fa'
+        elif langs == ['en']:
+            lang = 'en'
+        mode = getattr(job, 'mode', 'responsive') or 'responsive'
+        rgb, _ = load_image(job.original_image.path)
+        res = mv2code.convert(job.original_image.path, mode=mode, lang=lang, refine='off')
+        scores = _score(rgb, res)
+        job.generated_html = res['html']
+        job.generated_css = res['css']
+        job.combined_output = res['html']
+        rep = res['report']
+        job.analysis_metadata = {
+            'engine': 'mv2code',
+            'mode': mode,
+            'total_regions': rep['regions'],
+            'text_elements': rep['text_lines'],
+            'nodes': rep['nodes'],
+            'ocr': rep['ocr'],
+            'direction': rep['page_direction'],
+            'scores': scores,
+            'similarity': scores.get('ssim') if isinstance(scores, dict) else None,
+            'tree': res['tree_json'],
+            'seconds': rep['seconds'],
+        }
+
+    # ---- v1 (kept for comparison)
+    def _process_legacy(self, job: ConversionJob) -> None:
+        from code_generator.generator import CodeGenerator
+        from vision_engine.models.page import PageStructure
+        image = Image.open(job.original_image.path).convert('RGB')
+        arr = np.array(image)
+        context = _get_pipeline().run(arr)
+        orphan = [t for t in context.text_elements if t.parent_id is None]
+        roots = sorted(context.regions + orphan, key=lambda e: e.bbox.area, reverse=True)
+        page = PageStructure(width=context.width, height=context.height, background_color=context.page_background,
+                             root_elements=roots, text_direction=getattr(context, 'page_direction', 'ltr'))
+        out = CodeGenerator().generate(page)
+        job.generated_html = out['html']
+        job.generated_css = out['css']
+        job.combined_output = out['combined']
+        job.analysis_metadata = {'engine': 'legacy', 'total_regions': sum(1 for _ in page.walk()),
+                                 'text_elements': len(context.text_elements)}
+
+
+def build_zip(job: ConversionJob) -> bytes:
+    """ZIP with index.html, fonts/, tree.json, report.json and original.png for a finished job."""
+    from mv2code.bundle import zip_bytes
+    from mv2code.emit import font_assets
+    meta = job.analysis_metadata or {}
+    result = {
+        'html': job.combined_output,
+        'tree_json': meta.get('tree', {}),
+        'report': {k: v for k, v in meta.items() if k != 'tree'},
+        'assets': [dict(path=a['path'], source=a['source']) for a in font_assets()],
+    }
+    buf = io.BytesIO()
+    Image.open(job.original_image.path).convert('RGB').save(buf, 'PNG')
+    return zip_bytes(result, 'index', buf.getvalue())

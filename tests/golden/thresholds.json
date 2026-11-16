@@ -1,0 +1,26 @@
+{
+ "login-fa-light-0": {
+  "ssim": 0.891,
+  "editable": 0.93,
+  "responsive_ok": 0.327,
+  "macro_f1": 0.631,
+  "text_present": 0.721,
+  "text_cer": 0.198
+ },
+ "pricing-en-dark-0": {
+  "ssim": 0.797,
+  "editable": 0.93,
+  "responsive_ok": 0.66,
+  "macro_f1": 0.777,
+  "text_present": 0.725,
+  "text_cer": 0.141
+ },
+ "settings-fa-light-0": {
+  "ssim": 0.859,
+  "editable": 0.93,
+  "responsive_ok": 0.66,
+  "macro_f1": 0.725,
+  "text_present": 0.8,
+  "text_cer": 0.083
+ }
+}

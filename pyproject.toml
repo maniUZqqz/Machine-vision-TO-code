@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mv2code"
+version = "2.0.0"
+description = "Screenshot to HTML/CSS with classical computer vision: Persian/English OCR, flex/table layout, honest benchmark"
+readme = "README.md"
+requires-python = ">=3.9"
+# No licence is declared here on purpose: the repository owner has not chosen one yet.
+dependencies = [
+    "numpy>=1.24",
+    "opencv-python-headless>=4.8",
+    "Pillow>=10.0",
+]
+
+[project.optional-dependencies]
+ocr-tesseract = ["pytesseract>=0.3.10"]            # also needs the `tesseract` binary + fas/eng language data
+ocr-easyocr = ["easyocr>=1.7"]                     # heavy: pulls torch
+browser = ["playwright==1.63.0"]                   # feedback loop + --score (needs a Chromium)
+web = ["Django>=4.2,<5.0", "python-dotenv>=1.0"]
+yolo = ["ultralytics>=8.0"]                        # optional detector; no training happens on the server
+bench = ["rapidfuzz>=3.0", "playwright==1.63.0", "pytesseract>=0.3.10"]
+dev = ["pytest>=7", "rapidfuzz>=3.0"]
+
+[project.scripts]
+mv2code = "mv2code.cli:main"
+
+[tool.setuptools]
+packages = ["mv2code"]
+
+[tool.setuptools.package-data]
+mv2code = ["fonts/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "browser: needs playwright + a headless Chromium",
+    "ocr: needs the tesseract binary with fas+eng",
+]
