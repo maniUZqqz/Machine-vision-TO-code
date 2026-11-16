@@ -1,0 +1,244 @@
+"""OCR backends.
+
+The converter finds text lines itself (``textdet``) and only asks an engine to *read* the
+crops, so engines are interchangeable:
+
+* ``tesseract``  (default; Tesseract 4/5 with ``fas`` + ``eng``; ~40 MB, light on CPU/RAM)
+* ``easyocr``    (optional extra ``[ocr-easyocr]``; needs torch - heavy)
+* ``external``   (pass ``ocr_lines=[...]`` to ``convert`` with boxes/text from any other engine)
+* ``none``       (no text: layout only)
+"""
+from __future__ import annotations
+
+import os
+import shutil
+import threading
+from dataclasses import dataclass
+from typing import List, Optional, Sequence
+
+import cv2
+import numpy as np
+
+from .imaging import Box, crop, mode_color
+
+# Tesseract spawns OpenMP threads per call; on small machines that makes it ~5x slower.
+os.environ.setdefault("OMP_THREAD_LIMIT", "1")
+
+
+@dataclass
+class OcrResult:
+    text: str
+    conf: float          # 0..1
+    words: int = 0
+
+
+# --------------------------------------------------------------------------- crop preparation
+def prepare_crop(img: np.ndarray, box: Box, target_h: float = 34.0, max_scale: float = 4.0) -> np.ndarray:
+    """Crop one text line and turn it into 'dark text on white' grey (any theme), upscaled."""
+    H, W = img.shape[:2]
+    pad = 3 + int(0.12 * box[3])
+    c = crop(img, box, pad)
+    if c.size == 0:
+        return np.full((12, 12), 255, np.uint8)
+    ring = np.concatenate([c[0], c[-1], c[:, 0], c[:, -1]])
+    bg = np.array(mode_color(ring), np.int16)
+    dist = np.abs(c.astype(np.int16) - bg).max(axis=2).astype(np.float32)
+    hi = max(30.0, float(np.percentile(dist, 99.7)))
+    gray = 255.0 - np.clip(dist * (255.0 / hi), 0, 255)
+    gray = gray.astype(np.uint8)
+    h = max(1, box[3])
+    scale = float(np.clip(target_h / h, 1.0, max_scale))
+    if scale > 1.05:
+        gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+    return cv2.copyMakeBorder(gray, 8, 8, 12, 12, cv2.BORDER_CONSTANT, value=255)
+
+
+# --------------------------------------------------------------------------- backends
+class Backend:
+    name = "base"
+
+    def available(self) -> bool:
+        return False
+
+    def read(self, crops: Sequence[np.ndarray], lang: str = "auto") -> List[OcrResult]:
+        raise NotImplementedError
+
+
+class TesseractBackend(Backend):
+    name = "tesseract"
+    _lock = threading.Lock()
+
+    def __init__(self, langs: Optional[str] = None, psm: int = 6, oem: int = 1):
+        self.psm, self.oem = psm, oem
+        self._langs = langs
+
+    def available(self) -> bool:
+        if shutil.which("tesseract") is None:
+            return False
+        try:
+            import pytesseract  # noqa: F401
+        except Exception:
+            return False
+        return True
+
+    def installed_langs(self) -> List[str]:
+        import pytesseract
+        try:
+            return list(pytesseract.get_languages(config=""))
+        except Exception:
+            return []
+
+    def _lang_arg(self, lang: str) -> str:
+        have = set(self.installed_langs())
+        if self._langs:
+            return self._langs
+        if lang == "en" or "fas" not in have:
+            return "eng" if "eng" in have or not have else "+".join(sorted(have)[:1])
+        if lang == "fa":
+            return "fas+eng" if "eng" in have else "fas"
+        return "fas+eng" if "eng" in have else "fas"
+
+    _DIGITS = "۰۱۲۳۴۵۶۷۸۹٬٫,.٪%0123456789"
+
+    def _sheet(self, crops, la: str, cfg: str):
+        """One tesseract run over all ``crops`` stacked into a tall sheet -> list[OcrResult | None]."""
+        import pytesseract
+        from pytesseract import Output
+        GAP = 46
+        W = max(c.shape[1] for c in crops) + 24 if crops else 1
+        ys, y = [], 12
+        for c in crops:
+            ys.append((y, y + c.shape[0]))
+            y += c.shape[0] + GAP
+        sheet = np.full((y, W), 255, np.uint8)
+        for c, (y0, y1) in zip(crops, ys):
+            sheet[y0:y1, 12:12 + c.shape[1]] = c
+        with self._lock:
+            d = pytesseract.image_to_data(sheet, lang=la, config=cfg, output_type=Output.DICT)
+        starts = np.array([a for a, _ in ys])
+        per: List[List[tuple]] = [[] for _ in crops]
+        for i in range(len(d["text"])):
+            t = (d["text"][i] or "").strip()
+            try:
+                cf = float(d["conf"][i])
+            except Exception:
+                cf = -1
+            if not t or cf < 0:
+                continue
+            cy = d["top"][i] + d["height"][i] / 2.0
+            k = int(np.searchsorted(starts, cy, side="right") - 1)
+            if 0 <= k < len(crops):
+                per[k].append((d["line_num"][i], d["par_num"][i], d["block_num"][i], d["left"][i], t, cf))
+        return [self._assemble(ws) if ws else None for ws in per]
+
+    def read(self, crops, lang: str = "auto") -> List[OcrResult]:
+        import pytesseract
+        from pytesseract import Output
+        la = self._lang_arg(lang)
+        base = f"--oem {self.oem} --psm {self.psm} -c preserve_interword_spaces=0"
+        out: List[Optional[OcrResult]] = self._sheet(crops, la, base) if crops else []
+        # --- crops the stitched run lost are read one by one as a single line (psm 7)
+        for k, r in enumerate(out):
+            if r is not None:
+                continue
+            c = crops[k]
+            if c.shape[0] < 8 or c.shape[1] < 8:
+                out[k] = OcrResult("", 0.0)
+                continue
+            with self._lock:
+                dd = pytesseract.image_to_data(c, lang=la, config=f"--oem {self.oem} --psm 7", output_type=Output.DICT)
+            ws = []
+            for i in range(len(dd["text"])):
+                t = (dd["text"][i] or "").strip()
+                try:
+                    cf = float(dd["conf"][i])
+                except Exception:
+                    cf = -1
+                if t and cf >= 0:
+                    ws.append((dd["line_num"][i], dd["par_num"][i], dd["block_num"][i], dd["left"][i], t, cf))
+            out[k] = self._assemble(ws) if ws else OcrResult("", 0.0)
+        # --- retry ladder for weak lines (bold Persian digits, tiny words): bigger crop, Persian-only model,
+        #     digit whitelist; keep whichever reading is the most confident
+        low = [k for k, r in enumerate(out) if r.conf < 0.55]
+        if low and "fas" in set(self.installed_langs()):
+            big = []
+            for k in low:
+                c = crops[k]
+                big.append(cv2.resize(c, None, fx=1.6, fy=1.6, interpolation=cv2.INTER_CUBIC))
+            tries = [("fas", base), ("fas", base + " -c tessedit_char_whitelist=" + self._DIGITS)]
+            for tl, cfg in tries:
+                try:
+                    rr = self._sheet(big, tl, cfg)
+                except Exception:
+                    continue
+                for k, r in zip(low, rr):
+                    if r is not None and r.conf > out[k].conf + 0.05 and r.text.strip():
+                        if "whitelist" in cfg and not any(ch.isdigit() for ch in r.text):
+                            continue
+                        out[k] = r
+        return [r or OcrResult("", 0.0) for r in out]
+
+    @staticmethod
+    def _assemble(ws) -> OcrResult:
+        # tesseract returns words of a line in reading order; keep it, join with spaces
+        ws = sorted(ws, key=lambda w: (w[2], w[1], w[0]))  # stable by block/par/line, original order within
+        text = " ".join(w[4] for w in ws)
+        tot = sum(len(w[4]) for w in ws) or 1
+        conf = sum(w[5] * len(w[4]) for w in ws) / tot / 100.0
+        return OcrResult(text, conf, len(ws))
+
+
+class EasyOcrBackend(Backend):
+    name = "easyocr"
+    _reader = None
+
+    def available(self) -> bool:
+        try:
+            import easyocr  # noqa: F401
+            return True
+        except Exception:
+            return False
+
+    def read(self, crops, lang: str = "auto") -> List[OcrResult]:
+        import easyocr
+        if EasyOcrBackend._reader is None:
+            EasyOcrBackend._reader = easyocr.Reader(["fa", "en"], gpu=False, verbose=False)
+        out = []
+        for c in crops:
+            res = EasyOcrBackend._reader.readtext(c, detail=1, paragraph=False)
+            if not res:
+                out.append(OcrResult("", 0.0))
+                continue
+            res = sorted(res, key=lambda r: -r[0][0][0])  # right-to-left by x for RTL scripts
+            text = " ".join(r[1] for r in res)
+            out.append(OcrResult(text, float(np.mean([r[2] for r in res])), len(res)))
+        return out
+
+
+class NullBackend(Backend):
+    name = "none"
+
+    def available(self) -> bool:
+        return True
+
+    def read(self, crops, lang: str = "auto"):
+        return [OcrResult("", 0.0) for _ in crops]
+
+
+BACKENDS = {"tesseract": TesseractBackend, "easyocr": EasyOcrBackend, "none": NullBackend}
+
+
+def get_backend(name: str = "auto") -> Backend:
+    """``auto`` = first available of tesseract, easyocr, none."""
+    if name in ("auto", None):
+        for n in ("tesseract", "easyocr"):
+            b = BACKENDS[n]()
+            if b.available():
+                return b
+        return NullBackend()
+    if name not in BACKENDS:
+        raise ValueError(f"unknown OCR backend {name!r}; choose one of {sorted(BACKENDS)} or 'auto'")
+    b = BACKENDS[name]()
+    if not b.available():
+        raise RuntimeError(f"OCR backend {name!r} is not available. Install it (see README: extras [ocr-tesseract] / [ocr-easyocr]).")
+    return b

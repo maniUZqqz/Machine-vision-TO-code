@@ -1,7 +1,17 @@
-Django>=4.2,<5.0
-Pillow>=10.0
-numpy>=1.24
-opencv-python-headless>=4.8
-easyocr>=1.7
-Jinja2>=3.1
-python-dotenv>=1.0
+# Pinned, known-good versions (tested on Python 3.10, Ubuntu 22.04).
+# Core (light):
+numpy==2.2.6
+opencv-python-headless==5.0.0.93
+Pillow==12.3.0
+
+# Optional extras - install what you need:
+#   OCR:      pytesseract==0.3.13   (+ apt install tesseract-ocr tesseract-ocr-fas tesseract-ocr-eng)
+#             easyocr>=1.7          (heavy, pulls torch; optional backend)
+#   Browser:  playwright==1.63.0    (+ playwright install chromium)  -> feedback loop, --score, benchmark
+#   Web UI:   Django==4.2.30
+#   Benchmark/tests: rapidfuzz==3.14.5, pytest==9.2.0
+pytesseract==0.3.13
+playwright==1.63.0
+Django==4.2.30
+rapidfuzz==3.14.5
+pytest==9.2.0
