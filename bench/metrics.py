@@ -114,26 +114,48 @@ def _lcs(a, b, eq) -> int:
 
 
 def text_eval(gt_texts, out_texts) -> dict:
-    """Per-page text metrics (raw sums so that callers can pool across pages)."""
-    out = [o for o in out_texts if not o.get("occluded")]
+    """Per-page text metrics (raw sums so that callers can pool across pages).
+
+    *Content* matching (the headline metric): every ground-truth text is matched with the output text that
+    reads it best - either the text nodes sitting inside its box, or (when those read worse) the best still
+    unused text node anywhere on the page.  Wrong *placement* is judged by the visual and structure metrics;
+    ``placed`` below counts only the first, position-bound kind of match.
+    """
+    out = [o for o in out_texts if not o.get("occluded") and norm(o["text"])]
+    for o in out:
+        o["_n"] = norm(o["text"])
     gt_boxes = [g["box"] for g in gt_texts]
-    acc = {s: dict(chars=0.0, err=0.0, present=0.0, n=0, order_num=0.0, order_den=0.0,
+    acc = {s: dict(chars=0.0, err=0.0, present=0.0, placed=0.0, n=0, order_num=0.0, order_den=0.0,
                    dig_ok=0.0, dig_n=0.0) for s in ("fa", "en")}
     fs_errs, col_errs, bold_ok = [], [], []
-    for g in gt_texts:
+    used = set()
+    order = sorted(range(len(gt_texts)), key=lambda i: -len(norm(gt_texts[i]["text"])))
+    for gi in order:
+        g = gt_texts[gi]
         gtxt = norm(g["text"])
         if not gtxt:
             continue
         sc = script_of(g["text"])
         gb = g["box"]
-        cand = [o for o in out if _center_in(o["box"], gb)]
         rtl = g.get("dir", "ltr") == "rtl"
-        cand = _reading_order(cand, rtl)
+        cand = _reading_order([o for o in out if _center_in(o["box"], gb)], rtl)
         otxt = norm(" ".join(o["text"] for o in cand))
-        if otxt:
-            cer = min(1.0, lev(gtxt, otxt) / len(gtxt))
-        else:
-            cer = 1.0
+        cer_s = min(1.0, lev(gtxt, otxt) / len(gtxt)) if otxt else 1.0
+        best, cer_g, node_g = cand, cer_s, None
+        if cer_s > 0.15:
+            for k, o in enumerate(out):
+                if k in used or len(o["_n"]) > 2 * len(gtxt) + 6:
+                    continue
+                c = lev(gtxt, o["_n"]) / len(gtxt)
+                if c < cer_g - 1e-9:
+                    cer_g, node_g = min(1.0, c), k
+            if node_g is not None:
+                best = [out[node_g]]
+                used.add(node_g)
+        if node_g is None:
+            for o in cand:
+                used.add(next((k for k, q in enumerate(out) if q is o), -1))
+        cer = cer_g
         a = acc[sc]
         w = len(gtxt)
         a["chars"] += w
@@ -141,31 +163,34 @@ def text_eval(gt_texts, out_texts) -> dict:
         a["n"] += 1
         if cer < 0.5:
             a["present"] += w
-        # digits: script correctness
+        if cer_s < 0.5:
+            a["placed"] += w
+        chosen_text = " ".join(o["text"] for o in best)
         gd = [ch for ch in g["text"] if ch.isdigit()]
         if gd and cer < 0.5:
-            same = sum(1 for ch in "".join(o["text"] for o in cand) if ch.isdigit() and ((ch in _FA_DIG) == (gd[0] in _FA_DIG)))
+            same = sum(1 for ch in chosen_text if ch.isdigit() and ((ch in _FA_DIGITS_SET) == (gd[0] in _FA_DIGITS_SET)))
             a["dig_ok"] += min(len(gd), same)
             a["dig_n"] += len(gd)
-        # word order
         gw = norm(g["text"], True).split()
-        ow = norm(" ".join(o["text"] for o in cand), True).split()
+        ow = norm(chosen_text, True).split()
         if len(gw) >= 2 and ow:
             matched = sum(1 for x in gw if any(_fuzzy_eq(x, y) for y in ow))
             if matched >= 2:
                 a["order_num"] += _lcs(gw, ow, _fuzzy_eq)
                 a["order_den"] += matched
-        if cer < 0.5 and len(cand) >= 1:
-            o = max(cand, key=lambda n: len(n["text"]))
+        if cer < 0.5 and len(best) >= 1:
+            o = max(best, key=lambda n: len(n["text"]))
             if g.get("fs"):
                 fs_errs.append(abs(o["fs"] - g["fs"]) / g["fs"])
             col_errs.append(_color_dist(o["color"], g["color"]))
             bold_ok.append(1.0 if (o["fw"] >= 600) == (g["fw"] >= 600) else 0.0)
-    # extra (hallucinated) text
-    tot_out = sum(len(norm(o["text"])) for o in out)
-    extra = sum(len(norm(o["text"])) for o in out if not any(_center_in(o["box"], b, 4.0) for b in gt_boxes))
+    tot_out = sum(len(o["_n"]) for o in out)
+    extra = sum(len(o["_n"]) for o in out if not any(_center_in(o["box"], b, 4.0) for b in gt_boxes))
     return dict(by_script=acc, fs_err=fs_errs, col_err=col_errs, bold_ok=bold_ok,
                 out_chars=tot_out, extra_chars=extra)
+
+
+_FA_DIGITS_SET = set("۰۱۲۳۴۵۶۷۸۹")
 
 
 def _parse_rgb(c: str):

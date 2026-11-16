@@ -209,15 +209,17 @@ def aggregate(pages: dict) -> dict:
         chars = sum(p["text"]["by_script"][sc]["chars"] for p in P)
         err = sum(p["text"]["by_script"][sc]["err"] for p in P)
         pres = sum(p["text"]["by_script"][sc]["present"] for p in P)
+        placed = sum(p["text"]["by_script"][sc].get("placed", 0.0) for p in P)
         on = sum(p["text"]["by_script"][sc]["order_num"] for p in P)
         od = sum(p["text"]["by_script"][sc]["order_den"] for p in P)
         dok = sum(p["text"]["by_script"][sc]["dig_ok"] for p in P)
         dn = sum(p["text"]["by_script"][sc]["dig_n"] for p in P)
         agg[f"text_{sc}"] = dict(chars=chars, cer=(err / chars) if chars else None,
-                                 present=(pres / chars) if chars else None,
+                                 present=(pres / chars) if chars else None, placed=(placed / chars) if chars else None,
                                  word_order=(on / od) if od else None, digit_script=(dok / dn) if dn else None)
     allc = sum(agg[f"text_{s}"]["chars"] for s in ("fa", "en"))
     agg["text_all"] = dict(
+        placed=sum((agg[f"text_{s}"]["placed"] or 0) * agg[f"text_{s}"]["chars"] for s in ("fa", "en")) / max(1, allc),
         present=sum((agg[f"text_{s}"]["present"] or 0) * agg[f"text_{s}"]["chars"] for s in ("fa", "en")) / max(1, allc),
         cer=sum((agg[f"text_{s}"]["cer"] or 0) * agg[f"text_{s}"]["chars"] for s in ("fa", "en")) / max(1, allc))
     oc = sum(p["text"]["out_chars"] for p in P)
@@ -280,7 +282,7 @@ def print_table(res: dict, log=print):
         f"set={res['meta']['set']} ===")
     for sc, lab in (("fa", "TEXT Persian"), ("en", "TEXT English")):
         t = a[f"text_{sc}"]
-        log(f"{lab:14s} present {fmt(t['present'])}  CER {fmt(t['cer'])}  word-order {fmt(t['word_order'])}  "
+        log(f"{lab:14s} present {fmt(t['present'])}  CER {fmt(t['cer'])}  placed-in-its-box {fmt(t['placed'])}  word-order {fmt(t['word_order'])}  "
             f"digit-script {fmt(t['digit_script'])}  ({int(t['chars'])} chars)")
     log(f"TEXT all       present {fmt(a['text_all']['present'])}  CER {fmt(a['text_all']['cer'])}  "
         f"extra-text {fmt(a['text_extra_chars'])}")
@@ -388,30 +390,82 @@ def main(argv=None) -> int:
     gen.add_argument("--data", default=DEFAULT_DATA)
     gen.add_argument("--force", action="store_true")
     gen.set_defaults(fn=lambda a: (build_dataset(os.path.abspath(a.data), page_specs(a.full), a.force), 0)[1])
+    rs = sub.add_parser("rescore", help="recompute the text metrics of an existing results file from the saved output pages")
+    rs.add_argument("results")
+    rs.add_argument("--data", default=DEFAULT_DATA)
+    rs.add_argument("--outdir", required=True, help="folder with the saved <page id>.html outputs")
+    rs.set_defaults(fn=lambda a: rescore(a.results, os.path.abspath(a.data), os.path.abspath(a.outdir)))
     cmp_ = sub.add_parser("compare", help="print a BEFORE/AFTER table from two results.json files")
     cmp_.add_argument("before")
     cmp_.add_argument("after")
-    cmp_.set_defaults(fn=lambda a: compare(a.before, a.after))
+    cmp_.add_argument("--md", action="store_true", help="markdown table")
+    cmp_.set_defaults(fn=lambda a: compare(a.before, a.after, a.md))
     args = ap.parse_args(argv)
     return args.fn(args)
 
 
-def compare(before: str, after: str) -> int:
+def rescore(results_path: str, data_dir: str, out_dir: str) -> int:
+    """Re-render the saved outputs and recompute ONLY the text metrics (used when the text metric changed)."""
+    res = json.load(open(results_path, encoding="utf-8"))
+    with Browser() as br:
+        for pid, page in res["pages"].items():
+            gt = prep_gt(json.load(open(os.path.join(data_dir, "gt", pid + ".json"), encoding="utf-8")))
+            w = gt["meta"]["width"]
+            _, probe = br.render("file://" + os.path.join(out_dir, pid + ".html"), w, shot=False)
+            page["text"] = M.text_eval(gt["texts"], probe["texts"])
+    res["overall"] = aggregate(res["pages"])
+    for key, name in (("by_lang", "lang"), ("by_theme", "theme"), ("by_kind", "kind")):
+        res[key] = group_text(res["pages"], name)
+    json.dump(res, open(results_path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    print_table(res)
+    return 0
+
+
+def _rows(bo: dict, ao: dict, co: dict | None = None):
+    def g(d, *path):
+        for k in path:
+            d = d.get(k) if isinstance(d, dict) else None
+        return d
+    spec = [("Persian text present as real text", ("text_fa", "present"), True),
+            ("Persian text also in the right place", ("text_fa", "placed"), True),
+            ("Persian text error rate (CER)", ("text_fa", "cer"), True),
+            ("Persian word order correct", ("text_fa", "word_order"), True),
+            ("English text present as real text", ("text_en", "present"), True),
+            ("English text error rate (CER)", ("text_en", "cer"), True),
+            ("Structure macro-F1 (7 roles, IoU>=0.5)", ("structure_macro_f1_spec",), True),
+            ("SSIM vs screenshot", ("visual", "ssim"), True),
+            ("Pixel similarity (strict)", ("visual", "pix_sim"), True),
+            ("Editable area (real HTML/CSS)", ("editable",), True),
+            ("Responsive ok (360/768/1280 px)", ("responsive_ok",), True),
+            ("Seconds per page", ("seconds_per_page",), False),
+            ("Peak RAM (MB)", ("peak_ram_mb",), False)]
+    rows = []
+    for name, path, pct in spec:
+        vals = [g(bo, *path), g(ao, *path)] + ([g(co, *path)] if co else [])
+        rows.append((name, vals, pct))
+    return rows
+
+
+def compare(before: str, after: str, markdown: bool = False) -> int:
+    """BEFORE (old engine) vs AFTER (new engine) on the SAME pages (+ AFTER on every page it ran)."""
     b, a = json.load(open(before, encoding="utf-8")), json.load(open(after, encoding="utf-8"))
-    bo, ao = b["overall"], a["overall"]
-    rows = [("Text present (Persian)", bo["text_fa"]["present"], ao["text_fa"]["present"]),
-            ("Text CER (Persian, lower=better)", bo["text_fa"]["cer"], ao["text_fa"]["cer"]),
-            ("Text present (English)", bo["text_en"]["present"], ao["text_en"]["present"]),
-            ("Text CER (English, lower=better)", bo["text_en"]["cer"], ao["text_en"]["cer"]),
-            ("Word order (Persian)", bo["text_fa"]["word_order"], ao["text_fa"]["word_order"]),
-            ("Structure macro-F1 (7 roles)", bo["structure_macro_f1_spec"], ao["structure_macro_f1_spec"]),
-            ("SSIM", bo["visual"]["ssim"], ao["visual"]["ssim"]),
-            ("Pixel similarity", bo["visual"]["pix_sim"], ao["visual"]["pix_sim"]),
-            ("Editable area", bo["editable"], ao["editable"]),
-            ("Responsive ok", bo["responsive_ok"], ao["responsive_ok"])]
-    print(f"{'metric':36s} {'before':>9s} {'after':>9s}")
-    for n, x, y in rows:
-        print(f"{n:36s} {fmt(x):>9s} {fmt(y):>9s}")
-    print(f"{'s/page':36s} {bo['seconds_per_page']:9.1f} {ao['seconds_per_page']:9.1f}")
-    print(f"{'peak RAM MB':36s} {bo['peak_ram_mb']:9.0f} {ao['peak_ram_mb']:9.0f}")
+    common = sorted(set(b["pages"]) & set(a["pages"]))
+    bsub = aggregate({k: b["pages"][k] for k in common})
+    asub = aggregate({k: a["pages"][k] for k in common})
+    rows = _rows(bsub, asub, a["overall"])
+    head = ["metric", f"BEFORE (old code, {len(common)} pages)", f"AFTER (same {len(common)} pages)", f"AFTER (all {a['overall']['pages']} pages)"]
+    f = lambda v, pct: "-" if v is None else (f"{v * 100:.1f}%" if pct else f"{v:.1f}")
+    if markdown:
+        print("| " + " | ".join(head) + " |")
+        print("|" + "---|" * len(head))
+        for n, vals, pct in rows:
+            print(f"| {n} | " + " | ".join(f(v, pct) for v in vals) + " |")
+        for name in sorted(set(b.get("real", {})) & set(a.get("real", {}))):
+            rb, ra = b["real"][name], a["real"][name]
+            print(f"| real sample {name}: SSIM / editable | {rb['visual']['ssim'] * 100:.1f}% / {rb['edit']['editable'] * 100:.1f}% | "
+                  f"{ra['visual']['ssim'] * 100:.1f}% / {ra['edit']['editable'] * 100:.1f}% | |")
+    else:
+        print(f"{head[0]:42s} {head[1]:>28s} {head[2]:>26s} {head[3]:>22s}")
+        for n, vals, pct in rows:
+            print(f"{n:42s} " + " ".join(f"{f(v, pct):>26s}" for v in vals))
     return 0
