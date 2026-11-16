@@ -132,7 +132,7 @@ Text lines are found by our own pixel analysis, so every engine reads the *same*
 
 | engine | CER | speed / weight | verdict |
 |---|---|---|---|
-| **Tesseract 4.1 `fas+eng`** (fast models, apt) - default | ~1% on text >= 16 px; **14.1% on three Persian pages full of 11-14 px text**; English ~0% | ~3.5 s/page, no torch, ~200 MB RAM | **default** (best accuracy per resource here) |
+| **Tesseract 4.1 `fas+eng`** (fast models, apt) - default | 0.9% Persian / ~0% English on six mixed pages; **14.1% on three Persian pages full of 11-14 px text** | ~3.5 s/page, no torch, ~200 MB RAM | **default** (best accuracy per resource here) |
 | Tesseract with `tessdata_best` fas | 16.4% (same 3 pages) | same | no gain |
 | Tesseract + extra pre-processing (heights 34..64 px, Lanczos, Otsu, sharpening, digit whitelist retry ladder) | 14.5-16% | +1-3 s | no gain; the retry ladder is kept only for weak lines |
 | Tesseract best-of-6 variants (oracle) / re-ranked by re-rendering the text with Vazirmatn | 9.9% / 14.1% | | re-ranking did not find the better reading |
