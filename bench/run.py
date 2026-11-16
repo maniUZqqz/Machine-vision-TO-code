@@ -375,7 +375,8 @@ def main(argv=None) -> int:
     r.add_argument("--engine", default="mv2code", choices=["mv2code", "legacy"])
     r.add_argument("--mode", default="responsive", choices=["responsive", "exact"])
     r.add_argument("--ocr", default="auto")
-    r.add_argument("--refine", default="auto")
+    r.add_argument("--refine", default="off", choices=["auto", "on", "off"],
+                   help="browser feedback loop in the converter under test (default off = deterministic, the setting of the README tables)")
     r.add_argument("--data", default=DEFAULT_DATA, help="cache dir for generated pages/ground truth")
     r.add_argument("--outdir", default=None)
     r.add_argument("--out", default=None, help="results json path (default bench/results.json)")

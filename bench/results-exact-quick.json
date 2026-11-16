@@ -3,14 +3,14 @@
   "engine": "mv2code",
   "mode": "exact",
   "set": "quick",
-  "date": "2026-11-16T15:16:46+00:00",
-  "git": "a953da1",
+  "date": "2026-11-16T16:00:53+00:00",
+  "git": "9345361",
   "python": "3.10.12",
   "machine": "Linux-5.15.0-194-generic-x86_64-with-glibc2.35",
   "cpus": 2,
   "ocr": "auto",
   "refine": "off",
-  "wall_seconds": 199.7
+  "wall_seconds": 160.1
  },
  "overall": {
   "pages": 24,
@@ -146,9 +146,9 @@
   "responsive_ok": 0.7222222222222222,
   "responsive_overflow": 0.0,
   "responsive_overlap_pages": 0.2916666666666667,
-  "seconds_per_page": 5.939329666357177,
-  "seconds_max": 13.587345127016306,
-  "peak_ram_mb": 215.69921875,
+  "seconds_per_page": 4.522318217437714,
+  "seconds_max": 8.181949977762997,
+  "peak_ram_mb": 202.55859375,
   "errors": 0
  },
  "by_lang": {
@@ -352,8 +352,8 @@
      "ok": true
     }
    ],
-   "seconds": 0.6068029003217816,
-   "peak_mb": 215.69921875,
+   "seconds": 0.4579798742197454,
+   "peak_mb": 202.55859375,
    "n_text_nodes": 0,
    "n_raster": 10,
    "error": null,
@@ -402,8 +402,8 @@
      "ok": true
     }
    ],
-   "seconds": 4.967373653780669,
-   "peak_mb": 215.69921875,
+   "seconds": 4.164985415991396,
+   "peak_mb": 202.55859375,
    "n_text_nodes": 43,
    "n_raster": 1,
    "error": null,
@@ -655,8 +655,8 @@
      "ok": false
     }
    ],
-   "seconds": 5.758846571203321,
-   "peak_mb": 126.05078125,
+   "seconds": 4.604409188963473,
+   "peak_mb": 124.83203125,
    "html_bytes": 44829,
    "error": null,
    "n_text_nodes": 49,
@@ -919,8 +919,8 @@
      "ok": true
     }
    ],
-   "seconds": 6.51539237704128,
-   "peak_mb": 194.58203125,
+   "seconds": 5.230507235042751,
+   "peak_mb": 193.04296875,
    "html_bytes": 43950,
    "error": null,
    "n_text_nodes": 49,
@@ -1210,8 +1210,8 @@
      "ok": false
     }
    ],
-   "seconds": 5.487652152311057,
-   "peak_mb": 195.6015625,
+   "seconds": 5.002479656599462,
+   "peak_mb": 193.0546875,
    "html_bytes": 52607,
    "error": null,
    "n_text_nodes": 59,
@@ -1534,8 +1534,8 @@
      "ok": true
     }
    ],
-   "seconds": 5.8375037661753595,
-   "peak_mb": 195.6015625,
+   "seconds": 4.492241770960391,
+   "peak_mb": 193.0546875,
    "html_bytes": 53247,
    "error": null,
    "n_text_nodes": 61,
@@ -1846,8 +1846,8 @@
      "ok": true
     }
    ],
-   "seconds": 5.9101096680387855,
-   "peak_mb": 195.6015625,
+   "seconds": 5.026472766883671,
+   "peak_mb": 193.0546875,
    "html_bytes": 27385,
    "error": null,
    "n_text_nodes": 69,
@@ -2206,8 +2206,8 @@
      "ok": true
     }
    ],
-   "seconds": 4.518127781804651,
-   "peak_mb": 195.6015625,
+   "seconds": 3.6086007710546255,
+   "peak_mb": 193.0546875,
    "html_bytes": 27237,
    "error": null,
    "n_text_nodes": 73,
@@ -2452,8 +2452,8 @@
      "ok": true
     }
    ],
-   "seconds": 3.329604145139456,
-   "peak_mb": 195.6015625,
+   "seconds": 3.2556257052347064,
+   "peak_mb": 193.0546875,
    "html_bytes": 14925,
    "error": null,
    "n_text_nodes": 36,
@@ -2698,8 +2698,8 @@
      "ok": true
     }
    ],
-   "seconds": 8.978481693193316,
-   "peak_mb": 195.6015625,
+   "seconds": 7.409831276163459,
+   "peak_mb": 193.0546875,
    "html_bytes": 15351,
    "error": null,
    "n_text_nodes": 39,
@@ -2965,8 +2965,8 @@
      "ok": false
     }
    ],
-   "seconds": 6.220012846868485,
-   "peak_mb": 195.6015625,
+   "seconds": 4.474275786895305,
+   "peak_mb": 193.0546875,
    "html_bytes": 23007,
    "error": null,
    "n_text_nodes": 47,
@@ -3250,8 +3250,8 @@
      "ok": true
     }
    ],
-   "seconds": 4.761115122120827,
-   "peak_mb": 195.6015625,
+   "seconds": 4.052967539988458,
+   "peak_mb": 193.0546875,
    "html_bytes": 22807,
    "error": null,
    "n_text_nodes": 50,
@@ -3421,8 +3421,8 @@
      "ok": true
     }
    ],
-   "seconds": 2.643562976270914,
-   "peak_mb": 195.6015625,
+   "seconds": 2.0098169296979904,
+   "peak_mb": 193.0546875,
    "html_bytes": 7438,
    "error": null,
    "n_text_nodes": 11,
@@ -3595,8 +3595,8 @@
      "ok": true
     }
    ],
-   "seconds": 1.7244356130249798,
-   "peak_mb": 195.6015625,
+   "seconds": 1.3882002946920693,
+   "peak_mb": 193.0546875,
    "html_bytes": 7286,
    "error": null,
    "n_text_nodes": 12,
@@ -3841,8 +3841,8 @@
      "ok": true
     }
    ],
-   "seconds": 5.6456564399413764,
-   "peak_mb": 195.6015625,
+   "seconds": 4.881215421948582,
+   "peak_mb": 193.0546875,
    "html_bytes": 90187,
    "error": null,
    "n_text_nodes": 46,
@@ -4096,8 +4096,8 @@
      "ok": true
     }
    ],
-   "seconds": 5.323330211918801,
-   "peak_mb": 195.6015625,
+   "seconds": 4.366954040247947,
+   "peak_mb": 193.0546875,
    "html_bytes": 66270,
    "error": null,
    "n_text_nodes": 46,
@@ -4312,8 +4312,8 @@
      "ok": false
     }
    ],
-   "seconds": 5.2285341480746865,
-   "peak_mb": 195.6015625,
+   "seconds": 4.385826941113919,
+   "peak_mb": 193.0546875,
    "html_bytes": 91305,
    "error": null,
    "n_text_nodes": 32,
@@ -4537,8 +4537,8 @@
      "ok": true
     }
    ],
-   "seconds": 6.151673843152821,
-   "peak_mb": 195.6015625,
+   "seconds": 4.675988280680031,
+   "peak_mb": 193.0546875,
    "html_bytes": 91997,
    "error": null,
    "n_text_nodes": 35,
@@ -4726,8 +4726,8 @@
      "ok": false
     }
    ],
-   "seconds": 6.125437818933278,
-   "peak_mb": 195.6015625,
+   "seconds": 4.541924526914954,
+   "peak_mb": 193.0546875,
    "html_bytes": 39387,
    "error": null,
    "n_text_nodes": 18,
@@ -4927,8 +4927,8 @@
      "ok": true
     }
    ],
-   "seconds": 4.7830903409048915,
-   "peak_mb": 195.6015625,
+   "seconds": 3.9936150568537414,
+   "peak_mb": 193.0546875,
    "html_bytes": 38086,
    "error": null,
    "n_text_nodes": 21,
@@ -5143,8 +5143,8 @@
      "ok": true
     }
    ],
-   "seconds": 2.679899503942579,
-   "peak_mb": 195.6015625,
+   "seconds": 2.3809322281740606,
+   "peak_mb": 193.0546875,
    "html_bytes": 25830,
    "error": null,
    "n_text_nodes": 25,
@@ -5356,8 +5356,8 @@
      "ok": true
     }
    ],
-   "seconds": 13.587345127016306,
-   "peak_mb": 195.6015625,
+   "seconds": 8.181949977762997,
+   "peak_mb": 193.0546875,
    "html_bytes": 26888,
    "error": null,
    "n_text_nodes": 24,
@@ -5641,8 +5641,8 @@
      "ok": false
     }
    ],
-   "seconds": 12.87842924427241,
-   "peak_mb": 195.6015625,
+   "seconds": 7.207205656915903,
+   "peak_mb": 193.0546875,
    "html_bytes": 51567,
    "error": null,
    "n_text_nodes": 56,
@@ -5899,8 +5899,8 @@
      "ok": true
     }
    ],
-   "seconds": 6.664316188078374,
-   "peak_mb": 195.6015625,
+   "seconds": 4.7121023163199425,
+   "peak_mb": 193.0546875,
    "html_bytes": 41622,
    "error": null,
    "n_text_nodes": 46,
@@ -6142,8 +6142,8 @@
      "ok": true
     }
    ],
-   "seconds": 5.534458185080439,
-   "peak_mb": 215.69921875,
+   "seconds": 4.086742367595434,
+   "peak_mb": 202.55859375,
    "html_bytes": 14164,
    "error": null,
    "n_text_nodes": 35,
@@ -6499,8 +6499,8 @@
      "ok": true
     }
    ],
-   "seconds": 6.256896228063852,
-   "peak_mb": 215.69921875,
+   "seconds": 4.565751481801271,
+   "peak_mb": 202.55859375,
    "html_bytes": 24328,
    "error": null,
    "n_text_nodes": 72,

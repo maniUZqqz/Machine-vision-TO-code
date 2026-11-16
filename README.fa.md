@@ -64,7 +64,7 @@ from mv2code.bundle import write_bundle; write_bundle(r, "out/")
 * **واکنش‌گرایی**: بدونِ سرریزِ افقی و بدونِ روی‌هم‌افتادنِ متن در ۳۶۰ و ۷۶۸ و ۱۲۸۰ پیکسل؛
 * **سرعت و RAM** روی همین سرورِ ۲ هسته‌ای.
 
-`python -m bench run --quick` (۲۴ صفحه) یا `--full` (۸۰ صفحه) جدول را چاپ و `bench/results.json` را می‌نویسد.
+`python -m bench run --quick` (۲۴ صفحه) یا `--full` (۸۰ صفحه) جدول را چاپ و `bench/results.json` را می‌نویسد (برای نگه‌داشتنِ فایلِ ثبت‌شده `--out` بده؛ `--mode exact` برای خروجیِ دقیق؛ `--refine on` برای سنجشِ حلقهٔ بازخورد؛ پیش‌فرض `--refine off` است، همان تنظیمِ همهٔ جدول‌های زیر). به tesseract، playwright و یک Chromiumِ بدون‌سر نیاز دارد.
 `python -m bench compare before.json after.json --md` جدولِ قبل/بعدِ زیر را می‌سازد.
 
 ### قبل و بعد (همان ماشین، همان صفحه‌ها)
@@ -86,8 +86,8 @@ from mv2code.bundle import write_bundle; write_bundle(r, "out/")
 | Pixel similarity (strict) | 97.9% | 98.7% | 97.3% |
 | Editable area (real HTML/CSS) | 89.2% | 100.0% | 99.3% |
 | Responsive ok (360/768/1280 px) | 66.7% | 77.8% | 69.2% |
-| Seconds per page | 117.8 | 8.6 | 8.6 |
-| Peak RAM (MB) | 1853.8 | 225.4 | 225.4 |
+| Seconds per page | 117.8 | 3.4 | 4.4 |
+| Peak RAM (MB) | 1853.8 | 213.2 | 220.4 |
 | real sample 1122.png: SSIM / editable | 82.7% / 12.8% | 52.2% / 59.3% | |
 | real sample 1524.png: SSIM / editable | 86.8% / 74.4% | 92.9% / 99.9% | |
 
@@ -106,8 +106,8 @@ from mv2code.bundle import write_bundle; write_bundle(r, "out/")
 | Pixel similarity (strict) | 97.9% | 99.1% | 98.9% |
 | Editable area (real HTML/CSS) | 89.2% | 100.0% | 100.0% |
 | Responsive ok (360/768/1280 px) | 66.7% | 83.3% | 72.2% |
-| Seconds per page | 117.8 | 4.1 | 5.9 |
-| Peak RAM (MB) | 1853.8 | 195.6 | 215.7 |
+| Seconds per page | 117.8 | 3.4 | 4.5 |
+| Peak RAM (MB) | 1853.8 | 193.1 | 202.6 |
 | real sample 1122.png: SSIM / editable | 82.7% / 12.8% | 67.5% / 59.2% | |
 | real sample 1524.png: SSIM / editable | 86.8% / 74.4% | 94.0% / 99.9% | |
 
@@ -117,15 +117,34 @@ from mv2code.bundle import write_bundle; write_bundle(r, "out/")
 
 ### حلقهٔ بازخوردِ مرورگر
 
-`refine="on"` صفحه را رندر می‌کند، هر متن را با پیکسل‌های اصلی‌اش مقایسه می‌کند، اندازهٔ فونت و جای متن را (حداکثر ۴٫۵ پیکسل) اصلاح می‌کند و بهترین دور را با SSIM نگه می‌دارد. اثرش روی مجموعهٔ سریع (همان صفحه‌ها، همان ماشین):
+`refine="on"` صفحه را در مرورگرِ بدون‌سر رندر می‌کند، هر متن را با پیکسل‌های اصلی‌اش مقایسه می‌کند، اندازهٔ فونت و جای متن را (حداکثر ۴٫۵ پیکسل) اصلاح می‌کند و بهترین دور را با SSIM نگه می‌دارد. `refine="auto"` (پیش‌فرضِ کتابخانه و CLI) اگر مرورگر نصب باشد آن را روشن می‌کند. **همهٔ جدول‌های دیگرِ این فایل با `--refine off` سنجیده شده‌اند** (قطعی و تکرارپذیر: اجرای دوبارهٔ `python -m bench run --full --refine off` و `--quick --mode exact --refine off` روی کدِ نهایی همان اعدادِ `bench/results.json` و `bench/results-exact-quick.json` را عیناً داد). اثرِ روشن‌کردنِ حلقه (همان صفحه‌ها، همان ماشین):
 
-| metric (24 pages, responsive) | feedback loop off | feedback loop on |
+| metric (80 pages, responsive) | feedback loop off | feedback loop on |
 |---|---|---|
-| SSIM | 86.0% | 86.8% |
-| SSIM inside text areas | 30.3% | 43.8% |
-| Pixel similarity | 97.9% | 98.1% |
-| Persian text present | 63.8% | 65.6% |
+| SSIM vs screenshot | 85.4% | 86.3% |
+| SSIM inside text areas | 30.6% | 44.4% |
+| Pixel similarity (strict) | 97.3% | 97.5% |
+| Persian text present as real text | 62.4% | 64.3% |
+| Persian text error rate (CER) | 31.3% | 29.9% |
+| English text error rate (CER) | 23.8% | 23.8% |
+| Responsive ok (360/768/1280 px) | 69.2% | 65.8% |
+| Seconds per page | 4.4 | 7.2 |
+| real sample 1122.png: SSIM | 52.2% | 52.2% |
+| real sample 1524.png: SSIM | 92.9% | 94.5% |
 
+| metric (24 pages, exact) | feedback loop off | feedback loop on |
+|---|---|---|
+| SSIM vs screenshot | 93.1% | 95.0% |
+| SSIM inside text areas | 31.8% | 60.1% |
+| Pixel similarity (strict) | 98.9% | 99.1% |
+| Persian text present as real text | 73.5% | 72.7% |
+| Persian text error rate (CER) | 22.1% | 22.7% |
+| English text error rate (CER) | 18.5% | 18.6% |
+| Seconds per page | 4.5 | 7.5 |
+| real sample 1122.png: SSIM | 67.5% | 67.5% |
+| real sample 1524.png: SSIM | 94.0% | 95.6% |
+
+خواندنِ جدول: حلقه تصویر را به اصل نزدیک‌تر می‌کند (در حالتِ exact بیشتر: SSIM حدود ۱٫۹ واحد بیشتر و SSIM در ناحیهٔ متن از ۳۱٫۸٪ به ۶۰٫۱٪) و حدود ۳ ثانیه برای هر صفحه خرج دارد؛ خوانشِ متن را بهتر نمی‌کند (متنِ فارسیِ واقعی در exact ‏۷۳٫۵٪ ← ۷۲٫۷٪ و CER ‏۲۲٫۱٪ ← ۲۲٫۷٪: در حدِ نوسان، کمی بدتر). در حالتِ *responsive* سودش کم است (SSIM حدود ۰٫۹ واحد) و آزمونِ بازچینش کمی **بدتر** می‌شود (۶۹٫۲٪ ← ۶۵٫۸٪ صفحه‌های بدونِ سرریز/روی‌هم‌افتادگی): اندازه‌هایی که با اسکرین‌شاتِ ۱۲۸۰ پیکسلی جور شده‌اند در عرضِ کم جای کمتری دارند. پس: برای خروجیِ responsive که آدم ویرایش می‌کند `refine="off"`، و برای exact `refine="on"`. نتیجهٔ خام: `bench/results-refine-full.json` و `bench/results-exact-quick-refine-on.json`.
 
 ### مقایسهٔ موتورهای OCR (همان برش‌ها، روی همین سرورِ ۲ هسته‌ای)
 
@@ -165,7 +184,12 @@ from mv2code.bundle import write_bundle; write_bundle(r, "out/")
 
 ## تست و CI
 
-`python -m pytest tests -q` ← تستِ واحد برای هر مرحله، تستِ سرتاسریِ CLI و API، و صفحه‌های طلایی (نیاز به tesseract و مرورگرِ بدون‌سر؛ وگرنه رد می‌شوند).
+```bash
+pip install -e ".[dev,web,ocr-tesseract]"     # pytest + Django + pytesseract (+ [browser] و یک Chromium برای تست‌های golden/مرورگر)
+python -m pytest -q
+```
+
+شامل: تستِ واحد برای هر مرحله، تستِ سرتاسریِ CLI و API، و صفحه‌های طلایی (نیاز به tesseract و مرورگرِ بدون‌سر؛ وگرنه رد می‌شوند).
 `.github/workflows/ci.yml` تست‌های سریع را در هر push و بنچمارکِ مرورگر را زمان‌بندی‌شده/دستی اجرا می‌کند.
 
 ## YOLO (اختیاری)

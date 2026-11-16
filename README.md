@@ -65,7 +65,7 @@ Vazirmatn/Inter, Persian digits) plus the 2 real samples, keeps the exact ground
 * **responsive**: no horizontal overflow and no overlapping text at 360 / 768 / 1280 px;
 * **speed / RAM** on this 2-CPU server.
 
-`python -m bench run --quick` (24 pages) or `--full` (80 pages) prints the table and writes `bench/results.json`.
+`python -m bench run --quick` (24 pages) or `--full` (80 pages) prints the table and writes `bench/results.json` (pass `--out` to keep the committed file; `--mode exact` for the pixel-faithful output; `--refine on` to measure the feedback loop; default `--refine off`, the setting of every table below). It needs tesseract, playwright and a headless Chromium.
 `python -m bench compare before.json after.json --md` prints the BEFORE/AFTER table below.
 
 ### Before vs after (same machine, same pages)
@@ -87,8 +87,8 @@ BEFORE is the original v1 code run through the very same benchmark (EasyOCR need
 | Pixel similarity (strict) | 97.9% | 98.7% | 97.3% |
 | Editable area (real HTML/CSS) | 89.2% | 100.0% | 99.3% |
 | Responsive ok (360/768/1280 px) | 66.7% | 77.8% | 69.2% |
-| Seconds per page | 117.8 | 8.6 | 8.6 |
-| Peak RAM (MB) | 1853.8 | 225.4 | 225.4 |
+| Seconds per page | 117.8 | 3.4 | 4.4 |
+| Peak RAM (MB) | 1853.8 | 213.2 | 220.4 |
 | real sample 1122.png: SSIM / editable | 82.7% / 12.8% | 52.2% / 59.3% | |
 | real sample 1524.png: SSIM / editable | 86.8% / 74.4% | 92.9% / 99.9% | |
 
@@ -107,8 +107,8 @@ BEFORE is the original v1 code run through the very same benchmark (EasyOCR need
 | Pixel similarity (strict) | 97.9% | 99.1% | 98.9% |
 | Editable area (real HTML/CSS) | 89.2% | 100.0% | 100.0% |
 | Responsive ok (360/768/1280 px) | 66.7% | 83.3% | 72.2% |
-| Seconds per page | 117.8 | 4.1 | 5.9 |
-| Peak RAM (MB) | 1853.8 | 195.6 | 215.7 |
+| Seconds per page | 117.8 | 3.4 | 4.5 |
+| Peak RAM (MB) | 1853.8 | 193.1 | 202.6 |
 | real sample 1122.png: SSIM / editable | 82.7% / 12.8% | 67.5% / 59.2% | |
 | real sample 1524.png: SSIM / editable | 86.8% / 74.4% | 94.0% / 99.9% | |
 
@@ -116,15 +116,34 @@ Reading the tables: (1) v1's *responsive* score comes from shrinking the whole p
 
 ### The browser feedback loop
 
-`refine="on"` renders the page, compares every text with the pixels it came from, nudges font sizes and positions (<= 4.5 px) and keeps the best round by SSIM. Effect on the quick set (same pages, same machine):
+`refine="on"` renders the page in a headless browser, compares every text with the pixels it came from, nudges font sizes and positions (<= 4.5 px) and keeps the best round by SSIM. `refine="auto"` (the library/CLI default) turns it on when a browser is installed. **Every other table in this README is measured with `--refine off`** (deterministic and reproducible: re-running `python -m bench run --full --refine off` / `--quick --mode exact --refine off` on the final code reproduced `bench/results.json` / `bench/results-exact-quick.json` number for number). Effect of switching the loop on, same pages, same machine:
 
-| metric (24 pages, responsive) | feedback loop off | feedback loop on |
+| metric (80 pages, responsive) | feedback loop off | feedback loop on |
 |---|---|---|
-| SSIM | 86.0% | 86.8% |
-| SSIM inside text areas | 30.3% | 43.8% |
-| Pixel similarity | 97.9% | 98.1% |
-| Persian text present | 63.8% | 65.6% |
+| SSIM vs screenshot | 85.4% | 86.3% |
+| SSIM inside text areas | 30.6% | 44.4% |
+| Pixel similarity (strict) | 97.3% | 97.5% |
+| Persian text present as real text | 62.4% | 64.3% |
+| Persian text error rate (CER) | 31.3% | 29.9% |
+| English text error rate (CER) | 23.8% | 23.8% |
+| Responsive ok (360/768/1280 px) | 69.2% | 65.8% |
+| Seconds per page | 4.4 | 7.2 |
+| real sample 1122.png: SSIM | 52.2% | 52.2% |
+| real sample 1524.png: SSIM | 92.9% | 94.5% |
 
+| metric (24 pages, exact) | feedback loop off | feedback loop on |
+|---|---|---|
+| SSIM vs screenshot | 93.1% | 95.0% |
+| SSIM inside text areas | 31.8% | 60.1% |
+| Pixel similarity (strict) | 98.9% | 99.1% |
+| Persian text present as real text | 73.5% | 72.7% |
+| Persian text error rate (CER) | 22.1% | 22.7% |
+| English text error rate (CER) | 18.5% | 18.6% |
+| Seconds per page | 4.5 | 7.5 |
+| real sample 1122.png: SSIM | 67.5% | 67.5% |
+| real sample 1524.png: SSIM | 94.0% | 95.6% |
+
+Reading it: the loop brings the picture closer (more in exact mode: SSIM +1.9 points and text areas 31.8% -> 60.1%) and costs ~3 s per page; it does not improve the text recognition itself (Persian text present in exact mode 73.5% -> 72.7%, CER 22.1% -> 22.7%: within noise, slightly worse). In *responsive* mode the gain is small (SSIM +0.9) and the re-flow check gets slightly **worse** (69.2% -> 65.8% of pages without overflow/overlap): sizes tuned to match the 1280 px screenshot leave less room when the page is narrowed. So: `refine="off"` for responsive output that people will edit, `refine="on"` for exact output. Raw results: `bench/results-refine-full.json`, `bench/results-exact-quick-refine-on.json`.
 
 ### OCR engines compared (same crops, measured on this 2-CPU server)
 
@@ -164,7 +183,12 @@ Text lines are found by our own pixel analysis, so every engine reads the *same*
 
 ## Tests and CI
 
-`python -m pytest tests -q` - unit tests per stage, CLI and Django API end-to-end tests, golden pages (need tesseract + a headless browser; skipped otherwise).
+```bash
+pip install -e ".[dev,web,ocr-tesseract]"     # pytest + Django + pytesseract (+ [browser] and a Chromium for the golden/browser tests)
+python -m pytest -q
+```
+
+Unit tests per stage, CLI and Django API end-to-end tests, golden pages (need tesseract + a headless browser; skipped otherwise).
 `.github/workflows/ci.yml` runs the quick tests on every push and the browser benchmark on a schedule / manually.
 
 ## YOLO (optional)
