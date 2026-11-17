@@ -14,7 +14,7 @@ import os
 import re
 import shutil
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Sequence
 
 import cv2
@@ -31,6 +31,10 @@ class OcrResult:
     text: str
     conf: float          # 0..1
     words: int = 0
+    # Tesseract only: the words behind ``text`` (``(line, par, block, left, text, conf, width, top, height)``, positions relative to ``src``) and the
+    # crop they were read from - the second pass re-reads single doubtful words (``PDF``, ``100%``) from it
+    ws: Optional[list] = field(default=None, repr=False, compare=False)
+    src: Optional[np.ndarray] = field(default=None, repr=False, compare=False)
 
 
 # --------------------------------------------------------------------------- crop preparation
@@ -105,6 +109,46 @@ class TesseractBackend(Backend):
 
     _DIGITS = "۰۱۲۳۴۵۶۷۸۹٬٫,.٪%0123456789"
 
+    def _read_line(self, crop: np.ndarray, la: str, psm: int = 7) -> Optional["OcrResult"]:
+        """One crop = one text line, read on its own (``--psm 7``)."""
+        import pytesseract
+        from pytesseract import Output
+        if crop.shape[0] < 8 or crop.shape[1] < 8:
+            return None
+        with self._lock:
+            dd = pytesseract.image_to_data(crop, lang=la, config=f"--oem {self.oem} --psm {psm} -c preserve_interword_spaces=0", output_type=Output.DICT)
+        ws = []
+        for i in range(len(dd["text"])):
+            t = (dd["text"][i] or "").strip()
+            try:
+                cf = float(dd["conf"][i])
+            except Exception:
+                cf = -1
+            if t and cf >= 0:
+                ws.append((dd["line_num"][i], dd["par_num"][i], dd["block_num"][i], dd["left"][i], t, cf, dd["width"][i], dd["top"][i], dd["height"][i]))
+        if not ws:
+            return None
+        r = self._assemble(ws)
+        r.src = crop
+        return r
+
+    def _read_word(self, crop: np.ndarray, la: str, psm: int = 8, whitelist: str = ""):
+        """One word crop -> (text, conf 0..100)."""
+        import pytesseract
+        from pytesseract import Output
+        cfg = f"--oem {self.oem} --psm {psm}" + (f" -c tessedit_char_whitelist={whitelist}" if whitelist else "")
+        with self._lock:
+            dd = pytesseract.image_to_data(crop, lang=la, config=cfg, output_type=Output.DICT)
+        toks = [((dd["text"][i] or "").strip(), float(dd["conf"][i])) for i in range(len(dd["text"])) if (dd["text"][i] or "").strip() and float(dd["conf"][i]) >= 0]
+        if not toks:
+            return "", 0.0
+        return "".join(t for t, _ in toks), sum(c for _, c in toks) / len(toks)
+
+    def rescan(self, img, boxes, crops, results, lang: str = "auto"):
+        """Second pass over the doubtful lines (see ``rescan.py``); ``results`` of the lines it is happy with are returned unchanged."""
+        from . import rescan as _rs
+        return _rs.rescan(self, img, boxes, crops, results, lang, prepare=lambda im, b, th: prepare_crop(im, b, target_h=th, max_scale=5.0))
+
     def _sheet(self, crops, la: str, cfg: str):
         """One tesseract run over all ``crops`` stacked into a tall sheet -> list[OcrResult | None]."""
         import pytesseract
@@ -133,8 +177,14 @@ class TesseractBackend(Backend):
             cy = d["top"][i] + d["height"][i] / 2.0
             k = int(np.searchsorted(starts, cy, side="right") - 1)
             if 0 <= k < len(crops):
-                per[k].append((d["line_num"][i], d["par_num"][i], d["block_num"][i], d["left"][i], t, cf, d["width"][i]))
-        return [self._assemble(ws) if ws else None for ws in per]
+                per[k].append((d["line_num"][i], d["par_num"][i], d["block_num"][i], d["left"][i] - 12, t, cf, d["width"][i], d["top"][i] - ys[k][0], d["height"][i]))
+        out = []
+        for k, ws in enumerate(per):
+            r = self._assemble(ws) if ws else None
+            if r is not None:
+                r.src = crops[k]
+            out.append(r)
+        return out
 
     def read(self, crops, lang: str = "auto") -> List[OcrResult]:
         import pytesseract
@@ -160,8 +210,9 @@ class TesseractBackend(Backend):
                 except Exception:
                     cf = -1
                 if t and cf >= 0:
-                    ws.append((dd["line_num"][i], dd["par_num"][i], dd["block_num"][i], dd["left"][i], t, cf, dd["width"][i]))
+                    ws.append((dd["line_num"][i], dd["par_num"][i], dd["block_num"][i], dd["left"][i], t, cf, dd["width"][i], dd["top"][i], dd["height"][i]))
             out[k] = self._assemble(ws) if ws else OcrResult("", 0.0)
+            out[k].src = c
         # --- retry ladder for weak lines (bold Persian digits, tiny words): bigger crop, Persian-only model,
         #     digit whitelist; keep whichever reading is the most confident
         low = [k for k, r in enumerate(out)
@@ -200,8 +251,10 @@ class TesseractBackend(Backend):
         edge = {order[0], order[-1]}
         for i, w in enumerate(ws):
             t, cf = w[4], w[5]
-            if i in edge and len(t) == 1 and t.isdigit() and cf < 90 and len(ws) >= 3:
-                continue                                  # a lone digit at the end of a Persian line: an icon (a dot, a badge)
+            if i in edge and len(t) == 1 and t.isdigit() and cf < 97 and len(ws) >= 2 and all(len(x) >= 7 for x in ws) and cls._set_apart(ws, i):
+                continue                                  # one digit set apart from a Persian line: an icon read as a digit (``2 چغر``)
+            if i in edge and len(t) <= 2 and t.isdigit() and cf < 90 and len(ws) >= 3:
+                continue                                  # one or two digits at the end of a Persian line: an icon (a dot, a badge, an arrow)
             if not cls._AR.search(t) and not any(ch.isdigit() for ch in t):
                 letters = len(cls._LAT.findall(t))
                 if letters == 0 and i not in edge and all(ch in "—–-/·•.:،" for ch in t):
@@ -212,6 +265,21 @@ class TesseractBackend(Backend):
                     continue
             keep.append(w)
         return TesseractBackend._drop_edge_fragments(keep or ws)
+
+    @classmethod
+    def _set_apart(cls, ws, i) -> bool:
+        """is word ``i`` separated from its neighbour by a clearly wider gap than a space (at the prepared 34 px line height a space is ~8 px)?"""
+        order = sorted(range(len(ws)), key=lambda j: ws[j][3])
+        p = order.index(i)
+        if p == 0:
+            nb = order[1]
+            gap = ws[nb][3] - (ws[i][3] + ws[i][6])
+        elif p == len(order) - 1:
+            nb = order[-2]
+            gap = ws[i][3] - (ws[nb][3] + ws[nb][6])
+        else:
+            return False
+        return gap >= 14
 
     @classmethod
     def _drop_edge_fragments(cls, ws):
@@ -237,15 +305,50 @@ class TesseractBackend(Backend):
                 break
         return ws
 
+    @classmethod
+    def _logical_order(cls, ws):
+        """Words of ONE visual line in reading order.  Tesseract's own word order flips when a Persian line holds a Latin word or a number
+        (``PDF خروجی`` instead of ``خروجی PDF``); the pixels do not lie: a Persian line is read right to left by position, and a run of
+        Latin words/numbers inside it left to right."""
+        if len(ws) < 2 or any(len(w) < 9 for w in ws):
+            return ws
+        hs = sorted(w[8] for w in ws)
+        med_h = max(1, hs[len(hs) // 2])
+        tops = [w[7] + w[8] / 2.0 for w in ws]
+        if max(tops) - min(tops) > 0.8 * med_h:
+            return ws                                         # several text lines in one crop: keep tesseract's order
+        ar = sum(len(cls._AR.findall(w[4])) for w in ws)
+        la = sum(len(cls._LAT.findall(w[4])) for w in ws)
+        if ar < 2 or ar < la:
+            return sorted(ws, key=lambda w: w[3])             # a Latin line: left to right
+        out = sorted(ws, key=lambda w: -(w[3] + w[6] / 2.0))  # a Persian line: right to left
+        i = 0
+        while i < len(out):                                   # runs of Latin/digit words read left to right
+            if cls._latin_word(out[i][4]):
+                j = i
+                while j + 1 < len(out) and cls._latin_word(out[j + 1][4]):
+                    j += 1
+                if j > i:
+                    out[i:j + 1] = out[i:j + 1][::-1]
+                i = j + 1
+            else:
+                i += 1
+        return out
+
+    @classmethod
+    def _latin_word(cls, t: str) -> bool:
+        return not cls._AR.search(t) and any(ch.isalnum() for ch in t)
+
     @staticmethod
     def _assemble(ws) -> OcrResult:
         # tesseract returns words of a line in reading order; keep it, join with spaces
         ws = sorted(ws, key=lambda w: (w[2], w[1], w[0]))  # stable by block/par/line, original order within
         ws = TesseractBackend._drop_junk_words(ws)
+        ws = TesseractBackend._logical_order(ws)
         text = " ".join(w[4] for w in ws)
         tot = sum(len(w[4]) for w in ws) or 1
         conf = sum(w[5] * len(w[4]) for w in ws) / tot / 100.0
-        return OcrResult(text, conf, len(ws))
+        return OcrResult(text, conf, len(ws), ws=list(ws))
 
 
 class EasyOcrBackend(Backend):

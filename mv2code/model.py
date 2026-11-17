@@ -32,6 +32,7 @@ class Node:
     line_h: float = 0.0            # css line-height px
     lbox: Optional[Box] = None     # css content box of a text block (for layout)
     conf: float = 1.0
+    review: bool = False           # OCR was not sure about (a line of) this text: a person should check it (``review.py``)
     # --- media
     src: str = ""                  # data URI (raster crop)
     svg: str = ""                  # inline SVG (traced icon)
@@ -67,6 +68,10 @@ class Node:
             d["align"] = self.align
             if len(self.lines) > 1:
                 d["lines"] = [t for _, t in self.lines]
+            if self.conf < 1.0:
+                d["conf"] = round(float(self.conf), 2)
+            if self.review:
+                d["review"] = True
         if self.role == "image":
             d["embedded_raster"] = True
         if self.role == "icon":

@@ -7,7 +7,7 @@ inferred afterwards by ``layout.py``.
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
 
 import cv2
@@ -30,6 +30,8 @@ class TL:
     conf: float
     rtl: bool = False
     style: Optional[TextStyle] = None
+    check: bool = False                  # worth a second look (``review.flag_lines``)
+    why: List[str] = field(default_factory=list)
 
 
 # --------------------------------------------------------------------------- OCR step
@@ -45,6 +47,20 @@ def tight_box(img: np.ndarray, box: Box, thr: int = 28) -> Box:
         return box
     x0, y0 = max(0, box[0]), max(0, box[1])
     return (int(x0 + xs.min()), int(y0 + ys.min()), int(xs.max() - xs.min() + 1), int(ys.max() - ys.min() + 1))
+
+
+FAINT = 22      # max colour distance from the background below which "text" cannot be read by a person
+
+
+def ink_contrast(img: np.ndarray, box: Box) -> float:
+    """How far (max channel) the strongest ink is from the line's own background: ~12 for #f3f5f8 on white, 200+ for real text."""
+    c = crop(img, box, 3)
+    if c.size == 0:
+        return 255.0
+    ring = np.concatenate([c[0], c[-1], c[:, 0], c[:, -1]])
+    bg = np.array(mode_color(ring), np.int16)
+    dist = np.abs(c.astype(np.int16) - bg).max(axis=2)
+    return float(np.percentile(dist, 99.7))
 
 
 def _alnum_ratio(s: str) -> float:
@@ -79,15 +95,27 @@ def read_text(an: Analysis, backend: Backend, lang: str = "auto", ocr_lines=None
         return lines, nontext
     crops = [prepare_crop(img, c.box) for c in cands]
     res: List[OcrResult] = backend.read_boxes(crops, [c.box for c in cands], lang)
+    rescan = getattr(backend, "rescan", None)
+    if rescan is not None:                       # second look at the doubtful lines (bigger / thicker / other model); never worse than the first read
+        try:
+            res = rescan(img, [c.box for c in cands], crops, res, lang)
+        except Exception:  # noqa: BLE001 - a failing second pass must never lose the first reading
+            pass
     for c, r in zip(cands, res):
         t = (r.text or "").strip()
         w, h = c.box[2], c.box[3]
         compact = max(w, h) <= 72 and w / max(1, h) <= 3.2 and h / max(1, w) <= 3.2
         letters = sum(1 for ch in t if ch.isalnum())
+        if t and ink_contrast(img, c.box) < FAINT and not (letters >= 12 and r.conf >= 0.8):
+            continue          # near-invisible shapes (a watermark digit at #f3f5f8 on white, a soft shadow): not text anyone can read
         if (w / max(1, h) > 22 or h / max(1, w) > 6) and not (letters >= 4 and r.conf >= 0.5 and _alnum_ratio(t) >= 0.7):
             continue  # rules and bars, not text (a long one-line paragraph is 30+ times wider than tall and IS text)
         ok = letters >= 1 and _alnum_ratio(t) >= 0.5
-        if letters == 1:
+        short = t.replace(" ", "")
+        mixed = any(ch.isdigit() for ch in short) and any(ch.isalpha() for ch in short)
+        if compact and 2 <= len(short) <= 3 and ((short.isdigit() and r.conf < 0.9) or (mixed and r.conf < 0.97)):
+            ok = False        # an icon or a badge read as ``۱۰`` / ``4a`` (icons look like digits to OCR; real numbers are read with a high confidence)
+        elif letters == 1:
             # a lone character is almost always an icon glyph; keep clear digits only
             ok = ok and t.strip().isdigit() and r.conf >= 0.9 and h >= 10 and not (c.n_comp == 1 and w <= 12)
         else:
@@ -128,7 +156,11 @@ def postprocess_lines(lines: List[TL], zwnj: bool = True, glossary=None, repair:
         ln.text = persian.normalize_line(ln.text, pdig, zwnj=zwnj, conf=ln.conf, glossary=glossary, protected=protected, repair=repair)
         ln.rtl = persian.is_rtl(ln.text)
     texts = [ln.text for ln in lines if ln.text]
-    return pdig, persian.page_direction(texts)
+    pdir = persian.page_direction(texts)
+    if pdir == "rtl":
+        for ln in lines:
+            ln.text = persian.fix_trailing_plus(ln.text)
+    return pdig, pdir
 
 
 # --------------------------------------------------------------------------- helpers
@@ -303,7 +335,7 @@ class Builder:
         rtl = blk[0].rtl
         n = Node(role="text", box=ub, text=" ".join(l.text for l in blk), lines=[(l.box, l.text) for l in blk],
                  font=sty.family, weight=sty.weight, size=size, color=sty.color, rtl=rtl,
-                 conf=float(np.mean([l.conf for l in blk])), id=self.nid())
+                 conf=float(np.mean([l.conf for l in blk])), review=any(l.check for l in blk), id=self.nid())
         # alignment of a multi-line block / single line relative to its own lines
         if len(blk) > 1:
             lefts = [l.box[0] for l in blk]

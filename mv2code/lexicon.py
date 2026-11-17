@@ -84,6 +84,23 @@ class Lexicon:
     def known(self, word: str, floor: float = 2.0) -> bool:
         return self.zipf.get(_key(word), 0.0) >= floor
 
+    # common clitics: a word the list does not know may still be a known stem + suffix (``پیشرفتتان`` = پیشرفت + تان): such a word is not an OCR slip
+    _SUFFIXES = ("ترین", "هایی", "های", "ها", "تان", "مان", "شان", "تر", "ام", "ات", "اش", "ان", "ین", "ای", "ی")
+    _PREFIXES = ("نمی", "می")
+
+    def affix_known(self, key: str, floor: float = 3.0) -> bool:
+        for suf in self._SUFFIXES:
+            if key.endswith(suf) and len(key) - len(suf) >= 3 and self.zipf.get(key[:-len(suf)], 0.0) >= floor:
+                return True
+        for pre in self._PREFIXES:
+            if key.startswith(pre) and len(key) - len(pre) >= 2 and self.zipf.get(key[len(pre):], 0.0) >= floor:
+                return True
+        return False
+
+    def is_known(self, key: str) -> bool:
+        """in the list, or a known stem with a common suffix/prefix"""
+        return self.zipf.get(key, 0.0) >= 2.0 or self.affix_known(key)
+
     def surface(self, key: str) -> str:
         return self.best[key][0] if key in self.best else key
 
@@ -171,6 +188,10 @@ def correct_token(tok: str, lex: Lexicon, conf: float = 0.7, glossary: Optional[
         if surf != core and ZWNJ in surf and ZWNJ not in core and lex.best[key][1] >= z - 0.01 and _key(surf) == key:
             return pre + surf + post
         return tok
+    if lex.affix_known(key):
+        return tok                                                  # a known stem with a suffix (``پیشرفتتان``): not an OCR slip, and its look-alike "frequent word" is a different word
+    if key.endswith("ء") and len(key) >= 4 and lex.zipf.get(key[:-1], 0.0) >= 3.0:
+        return pre + core[:-1] + "،" + post                         # the comma after a word read as a hamza (``شماء`` -> ``شما،``)
     n = len(key)
     # brand words first: an unknown word that is one or two look-alike letters away from a brand word is that brand word (any length)
     if glossary:
