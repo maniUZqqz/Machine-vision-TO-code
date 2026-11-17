@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mv2code"
-version = "2.0.0"
+version = "2.1.0"
 description = "Screenshot to HTML/CSS with classical computer vision: Persian/English OCR, flex/table layout, honest benchmark"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -31,7 +31,7 @@ mv2code = "mv2code.cli:main"
 packages = ["mv2code"]
 
 [tool.setuptools.package-data]
-mv2code = ["fonts/*"]
+mv2code = ["fonts/*", "data/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

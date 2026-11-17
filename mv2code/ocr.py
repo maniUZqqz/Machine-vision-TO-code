@@ -11,6 +11,7 @@ crops, so engines are interchangeable:
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import threading
 from dataclasses import dataclass
@@ -62,6 +63,10 @@ class Backend:
 
     def read(self, crops: Sequence[np.ndarray], lang: str = "auto") -> List[OcrResult]:
         raise NotImplementedError
+
+    def read_boxes(self, crops: Sequence[np.ndarray], boxes: Sequence[Box], lang: str = "auto") -> List[OcrResult]:
+        """Same as ``read`` but also gets the page box of every crop (backends that were fed results from elsewhere match by box)."""
+        return self.read(crops, lang)
 
 
 class TesseractBackend(Backend):
@@ -128,7 +133,7 @@ class TesseractBackend(Backend):
             cy = d["top"][i] + d["height"][i] / 2.0
             k = int(np.searchsorted(starts, cy, side="right") - 1)
             if 0 <= k < len(crops):
-                per[k].append((d["line_num"][i], d["par_num"][i], d["block_num"][i], d["left"][i], t, cf))
+                per[k].append((d["line_num"][i], d["par_num"][i], d["block_num"][i], d["left"][i], t, cf, d["width"][i]))
         return [self._assemble(ws) if ws else None for ws in per]
 
     def read(self, crops, lang: str = "auto") -> List[OcrResult]:
@@ -155,11 +160,12 @@ class TesseractBackend(Backend):
                 except Exception:
                     cf = -1
                 if t and cf >= 0:
-                    ws.append((dd["line_num"][i], dd["par_num"][i], dd["block_num"][i], dd["left"][i], t, cf))
+                    ws.append((dd["line_num"][i], dd["par_num"][i], dd["block_num"][i], dd["left"][i], t, cf, dd["width"][i]))
             out[k] = self._assemble(ws) if ws else OcrResult("", 0.0)
         # --- retry ladder for weak lines (bold Persian digits, tiny words): bigger crop, Persian-only model,
         #     digit whitelist; keep whichever reading is the most confident
-        low = [k for k, r in enumerate(out) if r.conf < 0.55]
+        low = [k for k, r in enumerate(out)
+               if r.conf < 0.55 or (lang != "en" and r.text and not self._AR.search(r.text) and not any(ch.isdigit() for ch in r.text) and r.conf < 0.82)]
         if low and "fas" in set(self.installed_langs()):
             big = []
             for k in low:
@@ -178,10 +184,64 @@ class TesseractBackend(Backend):
                         out[k] = r
         return [r or OcrResult("", 0.0) for r in out]
 
+    _AR = re.compile("[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]")
+    _LAT = re.compile("[A-Za-z]")
+
+    @classmethod
+    def _drop_junk_words(cls, ws):
+        """In a Persian line, Latin-looking words with a low confidence are almost always icons or fragments misread as letters (``# امکانات``,
+        ``als &``): drop them.  Real Latin words (PDF, a brand) are read with a high confidence and stay."""
+        ar = sum(len(cls._AR.findall(w[4])) for w in ws)
+        la = sum(len(cls._LAT.findall(w[4])) for w in ws)
+        if ar < 2 or ar < la:
+            return ws
+        keep = []
+        order = sorted(range(len(ws)), key=lambda i: ws[i][3]) if all(len(w) >= 7 for w in ws) else list(range(len(ws)))
+        edge = {order[0], order[-1]}
+        for i, w in enumerate(ws):
+            t, cf = w[4], w[5]
+            if i in edge and len(t) == 1 and t.isdigit() and cf < 90 and len(ws) >= 3:
+                continue                                  # a lone digit at the end of a Persian line: an icon (a dot, a badge)
+            if not cls._AR.search(t) and not any(ch.isdigit() for ch in t):
+                letters = len(cls._LAT.findall(t))
+                if letters == 0 and i not in edge and all(ch in "—–-/·•.:،" for ch in t):
+                    keep.append(w)                      # a dash or slash between words is punctuation, not an icon
+                    continue
+                # Latin letters at an end of a Persian line are, far more often than not, an icon read as letters
+                if cf < 55 or (letters <= 2 and cf < 80) or (letters == 0 and cf < 88) or (i in edge and letters >= 1 and cf < 86):
+                    continue
+            keep.append(w)
+        return TesseractBackend._drop_edge_fragments(keep or ws)
+
+    @classmethod
+    def _drop_edge_fragments(cls, ws):
+        """An icon next to a label is read as one or two short low-confidence 'words' at an end of the line, set apart by a wider gap than the
+        spaces between real words (``عد چغر چیه؟``, ``زج ورود``): drop such an end word (twice at most)."""
+        ws = list(ws)
+        for _ in range(2):
+            if len(ws) < 3 or any(len(w) < 7 for w in ws):
+                return ws
+            order = sorted(range(len(ws)), key=lambda i: ws[i][3])
+            gaps = [ws[order[k + 1]][3] - (ws[order[k]][3] + ws[order[k]][6]) for k in range(len(order) - 1)]
+            inner = sorted(gaps[1:-1]) or [0]
+            med = inner[len(inner) // 2]
+            changed = False
+            for pos, gap in ((0, gaps[0]), (len(order) - 1, gaps[-1])):
+                w = ws[order[pos]]
+                letters = sum(1 for ch in w[4] if ch.isalpha())
+                if letters <= 3 and w[5] < 72 and gap >= max(9, 1.5 * med):
+                    del ws[order[pos]]
+                    changed = True
+                    break
+            if not changed:
+                break
+        return ws
+
     @staticmethod
     def _assemble(ws) -> OcrResult:
         # tesseract returns words of a line in reading order; keep it, join with spaces
         ws = sorted(ws, key=lambda w: (w[2], w[1], w[0]))  # stable by block/par/line, original order within
+        ws = TesseractBackend._drop_junk_words(ws)
         text = " ".join(w[4] for w in ws)
         tot = sum(len(w[4]) for w in ws) or 1
         conf = sum(w[5] * len(w[4]) for w in ws) / tot / 100.0
@@ -216,6 +276,77 @@ class EasyOcrBackend(Backend):
             text = " ".join(r[1] for r in res)
             out.append(OcrResult(text, float(np.mean([r[2] for r in res])), len(res)))
         return out
+
+
+class CallbackBackend(Backend):
+    """Wrap any function ``fn(crops, lang) -> [(text, conf) | OcrResult | str]`` (a remote service, another engine ...) as a backend."""
+    name = "external"
+
+    def __init__(self, fn, name: str = "external"):
+        self.fn, self.name = fn, name
+
+    def available(self) -> bool:
+        return True
+
+    def read(self, crops, lang: str = "auto") -> List[OcrResult]:
+        out = []
+        for r in self.fn(list(crops), lang):
+            if isinstance(r, OcrResult):
+                out.append(r)
+            elif isinstance(r, str):
+                out.append(OcrResult(r, 0.9, len(r.split())))
+            else:
+                t, c = r[0], float(r[1]) if len(r) > 1 else 0.9
+                out.append(OcrResult(str(t or ""), c, len(str(t or "").split())))
+        if len(out) != len(crops):
+            raise RuntimeError("external OCR returned %d results for %d crops" % (len(out), len(crops)))
+        return out
+
+
+class PrecomputedBackend(Backend):
+    """Results read elsewhere (e.g. on a GPU machine) for crops that ``ocr_crops`` produced: ``results`` = ``[{"box": [x, y, w, h], "text": str, "conf": float}]``.
+
+    Crops are matched by their box, so the page analysis may differ slightly from the one that produced the request; crops without a result
+    are read by ``fallback`` (default: the local engine, ``auto``) so a partial answer never loses text.  ``stats`` tells how many came from where."""
+
+    name = "external"
+
+    def __init__(self, results, fallback: Optional[Backend] = None, name: str = "external"):
+        self.name = name
+        self.by_box = {tuple(int(round(v)) for v in r["box"]): r for r in results}
+        self.fallback = fallback
+        self.stats = {"external": 0, "fallback": 0, "empty": 0}
+
+    def available(self) -> bool:
+        return True
+
+    def read(self, crops, lang: str = "auto"):
+        raise RuntimeError("PrecomputedBackend needs the boxes: use read_boxes")
+
+    def read_boxes(self, crops, boxes, lang: str = "auto") -> List[OcrResult]:
+        out: List[Optional[OcrResult]] = []
+        missing = []
+        for i, b in enumerate(boxes):
+            r = self.by_box.get(tuple(int(v) for v in b))
+            if r is None:
+                out.append(None)
+                missing.append(i)
+            else:
+                t = str(r.get("text") or "")
+                out.append(OcrResult(t, float(r.get("conf", 0.9)), len(t.split())))
+                self.stats["external"] += 1
+        if missing:
+            fb = self.fallback
+            if fb is None:
+                try:
+                    fb = get_backend("auto")
+                except Exception:  # noqa: BLE001
+                    fb = NullBackend()
+            res = fb.read([crops[i] for i in missing], lang)
+            for i, r in zip(missing, res):
+                out[i] = r
+                self.stats["fallback" if r.text else "empty"] += 1
+        return [r or OcrResult("", 0.0) for r in out]
 
 
 class NullBackend(Backend):

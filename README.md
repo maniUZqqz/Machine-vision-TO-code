@@ -5,7 +5,7 @@
 Convert a **UI screenshot into real, editable HTML/CSS** with classical computer vision - no AI API, no GPU.
 Persian (RTL) and English (LTR) pages, light and dark, desktop and mobile.
 
-* **Real text** (Tesseract `fas+eng` by default, EasyOCR optional), Persian letter/digit/ZWNJ normalisation, correct RTL word order.
+* **Real text** (Tesseract `fas+eng` by default, EasyOCR optional, any engine through `ocr=`), Persian letter/digit/ZWNJ normalisation, word-list repair of dot errors, correct RTL word order.
 * **Real layout**: recursive XY-cut -> nested `flex` rows/columns, `<table>`s, full-bleed sections - not absolutely positioned image crops.
 * **Real components**: buttons, inputs/selects/textareas, badges, checkboxes/radios/toggles, cards (border, radius, shadow, gradient), dividers, icons traced to inline SVG, photos kept as images.
 * Two output modes: `responsive` (semantic tags, flex/table, CSS variables, re-flows at 360/768/1280 px) and `exact` (pixel-faithful, absolute).
@@ -161,6 +161,46 @@ Text lines are found by our own pixel analysis, so every engine reads the *same*
 | RapidOCR / PaddleOCR (ONNX) | not evaluated | | no Persian recogniser model was available from sources reachable here; the backend interface (`mv2code/ocr.py`) makes adding one a small change |
 
 
+### v2.1: Persian text read from a *real* page (before / after)
+
+The synthetic pages above are clean; a real landing page is not (gradient buttons, icons next to labels, 12-14 px Persian). v2.1 is measured on a real
+Persian landing page (chagher.ir, screenshot at 1280 px and 390 px) whose text is known exactly from the browser's DOM (`python -m bench.line_eval`,
+109 DOM lines, 2 screenshots; DOM text nodes that share one pixel line are compared together, in reading order). Same machine, Tesseract `fas+eng`, no GPU:
+
+| real page, DOM ground truth | v2.0.0 | **v2.1.0** | v2.1.0 + brand word (`glossary=["چغر"]`) |
+|---|---|---|---|
+| lines read exactly (letters/digits normalised, spaces and half-spaces ignored) | 61.5% | **72.5%** | **75.2%** |
+| character error rate | 18.9% | **8.7%** | **8.5%** |
+| lines found at all | 89.0% | **93.6%** | 93.6% |
+| screenshot -> site-builder draft: DOM lines present as text (1280 / 390 px) | 42/54, 40/55 | **45/54, 42/55** | |
+| screenshot -> site-builder draft: invented form blocks | 1 per page | **0** | |
+
+(The brand word fixes `چخر / چفر / چعر` -> `چغر`; on this page the brand name is the only word that no word list knows.)
+Synthetic benchmark (80 pages, responsive, `--refine off`, committed `bench/results.json`): Persian text present as real text 62.4% -> **83.3%**,
+Persian CER 31.3% -> **14.1%**, English CER 23.8% -> **6.6%**, responsive-ok 69.2% -> 72.5%, structure macro-F1 83.2% -> 82.7%, SSIM unchanged (85.4%), 4.6 s/page, 234 MB.
+
+What changed (all CPU, no model files, no torch):
+
+* **Word-list repair** (`mv2code/lexicon.py`, `mv2code/data/fa_words.tsv.gz`): small Persian text loses its dots (`محفوظ` -> `محقوظ`, `پشتیبانی` -> `پشنیبانی`). A word that is not in the
+  list (28k words, with frequencies) is compared letter by letter with the list words of the same length, with a small cost for look-alike letters (ب پ ت ث ن ی, ج چ ح خ, ف ق, ع غ ...) and a full cost for any other,
+  and replaced only by a clearly more frequent word that is close. Short words (<= 3 letters), brand words, words repeated 3+ times on the page and rare real words are left alone; the standard half-space is restored
+  (`میکند` -> `می‌کند`). Persian punctuation (`،` `؛` `؟`) is restored. `convert(..., glossary=["brand", ...])`: names that are not in any dictionary: never changed, and misread look-alikes become them.
+* **Junk words**: low-confidence Latin fragments and icon fragments at the end of a Persian line (`# امکانات`, `als &`, `زج ورود`) are dropped.
+* **Long one-line paragraphs** were thrown away as "rules" (a 700 x 24 px line is 29x wider than tall); now they are text.
+* **Text inside gradient buttons and pills**: the outline and glow merged with the label (or two buttons were one candidate) and nothing was read; labels are now found again inside such a region against its own local background.
+* **External engines**: `convert(..., ocr=<callable or Backend>)`, `PrecomputedBackend` (results read elsewhere are matched to crops by box; missing ones fall back to the local engine) and `ocr_crops(image)` (the crops the converter would read),
+  so a GPU service can read the crops and the converter does the rest.
+
+OCR engines on the same real page (same crops, same clean-up):
+
+| engine | exact lines | CER | verdict |
+|---|---|---|---|
+| Tesseract 4.1 `fas+eng` + v2.1 repair (with the brand word, like the two rows below) | **75.2%** | 8.5% | default |
+| Tesseract 4.1, v2.0.0 | 61.5% | 18.9% | |
+| EasyOCR `arabic` recogniser exported to ONNX (215 MB, 0.7 s per line on 2 CPUs, same crops, same clean-up) | 52.3% | **6.8%** | lower raw error but drops spaces, reads icons as digits and confuses punctuation; 100x the weight: not worth shipping |
+| PP-OCRv5 `arabic_PP-OCRv5_mobile_rec` (ONNX, 8 MB, 0.1 s per line) | 48.6% | 19.3% | short words are excellent (`قیمت`, `سوالات متداول`), long lines lose letters; thin Vazirmatn is not what it was trained on |
+
+
 ### What was wrong with v1 (found by reading and running it)
 
 * Its "pixel similarity" counts a pixel as equal when it is within 30 grey levels: a **blank page scores ~88-94%** on it, so 91.4% / 95.5% said nothing about the quality of the code.
@@ -173,7 +213,7 @@ Text lines are found by our own pixel analysis, so every engine reads the *same*
 ## Known limits (honest)
 
 * **Synthetic benchmark.** The 80 pages come from our own templates; numbers show progress and regressions, not generality. On the two real samples only visual/editability/transcript checks exist (`1524.png` is a real Persian Bootstrap dashboard: SSIM 92.9%, 28 of 32 transcript lines found).
-* **OCR is the weak link on tiny Persian text** (11-14 px): ~14% character errors with Tesseract, so the generated text is real but sometimes wrong. EasyOCR halves that but needs torch.
+* **OCR is the weak link on tiny Persian text** (11-14 px): v2.1 repairs dots with a word list (real page: 18.9% -> 8.7% character errors, a quarter of the lines still have a wrong letter), so the generated text is real but sometimes wrong; read the first page of text before you publish. Names that are in no dictionary need `glossary=`.
 * **Layout drift**: positions are rebuilt from measured gaps; some pages drift 10-30 px vertically (see "placed in its box" in the table) and 20-30% of the narrow-width renders still overflow or overlap. The browser feedback loop nudges text but does not repair structural drift.
 * Rows only wrap **below ~93% of the source width**; tables need row rules or a header band to be recognised; repeated cards become flex rows (no CSS grid yet); overlapping elements fall back to small absolute "stacks".
 * Controls: checkboxes/radios/toggles are found with recall ~25%; icons ~50% (single-colour ones become inline SVG, multi-colour ones raster crops).
@@ -201,3 +241,4 @@ The v2 pipeline does not need it. The v1 detector code is kept and stays off wit
 
 This repository has **no licence file** yet - that is the owner's decision. Bundled fonts keep their own SIL OFL 1.1 licences (`mv2code/fonts/LICENSE-*.txt`);
 the benchmark pages are generated by this repository's own code (no third-party screenshots).
+The Persian word list `mv2code/data/fa_words.tsv.gz` is derived from the `wordfreq` data and keeps its **CC BY-SA 4.0** licence (`mv2code/data/NOTICE.md`); it is a separate data file that the code only reads.
