@@ -29,6 +29,14 @@ def test_persian_line_is_read_right_to_left_by_position_and_latin_runs_left_to_r
     assert TesseractBackend._assemble(ws).text == "اول دوم"
 
 
+def test_a_line_of_numbers_is_not_reordered_and_loses_no_digit_token():
+    # visual left to right: ۴۱ ۳۶۳ - a number with a thousands separator split in two tokens (the first one short and not very sure)
+    assert TesseractBackend._assemble([_w("۴۱", 10, 20, conf=80.0), _w("۳۶۳", 40, 30, conf=88.0)]).text == "۴۱ ۳۶۳"
+    # a number next to a Persian word: the word (rightmost) comes first, the number keeps its own left-to-right order
+    ws = [_w("۴۱", 10, 20, conf=92.0), _w("۳۶۳", 40, 30, conf=88.0), _w("تومان", 100, 50)]
+    assert TesseractBackend._assemble(ws).text == "تومان ۴۱ ۳۶۳"
+
+
 def test_one_or_two_digits_set_apart_at_the_end_of_a_persian_line_are_an_icon():
     ws = [_w("2", 0, 12, conf=92.0), _w("چغر", 40, 50), ]
     assert TesseractBackend._assemble(ws).text == "چغر"
@@ -128,11 +136,15 @@ def rescan_faint():
     return FAINT
 
 
-def test_a_two_digit_icon_with_a_middling_confidence_is_not_text():
+def test_a_two_digit_icon_with_a_low_confidence_is_not_text_but_numbers_stay():
     img = _page_with_mark((30, 30, 30))
     an = analyze(img)
-    lines, _ = read_text(an, _FakeBackend("۱۰", 0.8), "fa")
+    lines, _ = read_text(an, _FakeBackend("۱۰", 0.5), "fa")
     assert not [ln for ln in lines if ln.text == "۱۰"]
+    lines, _ = read_text(an, _FakeBackend("۱۰", 0.85), "fa")                      # a clear two-digit number stays
+    assert [ln for ln in lines if ln.text == "۱۰"]
+    lines, _ = read_text(an, _FakeBackend("۲۵۳", 0.65), "fa")                     # three digits stay (table cells)
+    assert [ln for ln in lines if ln.text == "۲۵۳"]
     lines, _ = read_text(an, _FakeBackend("4a", 0.9), "en")
     assert not [ln for ln in lines if ln.text == "4a"]
 

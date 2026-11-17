@@ -200,7 +200,7 @@ OCR engines on the same real page (same crops, same clean-up):
 | EasyOCR `arabic` recogniser exported to ONNX (215 MB, 0.7 s per line on 2 CPUs, same crops, same clean-up) | 52.3% | **6.8%** | lower raw error but drops spaces, reads icons as digits and confuses punctuation; 100x the weight: not worth shipping |
 | PP-OCRv5 `arabic_PP-OCRv5_mobile_rec` (ONNX, 8 MB, 0.1 s per line) | 48.6% | 19.3% | short words are excellent (`قیمت`, `سوالات متداول`), long lines lose letters; thin Vazirmatn is not what it was trained on |
 
-### v2.2: a second look at doubtful lines, and honest marks (before / after)
+### v2.2 (use 2.2.1): a second look at doubtful lines, and honest marks (before / after)
 
 v2.1 left about one real-page line in four with a wrong letter. v2.2 (`python -m bench.line_eval`, same real chagher.ir screenshots + a synthetic Persian page in Tahoma, DOM text as ground truth, Tesseract on CPU,
 brand word given) reads the doubtful lines again and marks the ones it is still unsure about:
@@ -208,7 +208,8 @@ brand word given) reads the doubtful lines again and marks the ones it is still 
 | | v2.1.1 | **v2.2.0** |
 |---|---|---|
 | real page (1280 + 390 px, 109 lines): exact / CER / found | 75.2% / 8.6% / 93.6% | **87.2% / 3.7% / 95.4%** |
-| Tahoma page (1280 + 390 px, 70 lines): exact / CER / found | 52.8% / 13.7% / 85.7% | **74.3% / 4.6% / 91.4%** |
+| Tahoma page (1280 + 390 px, 70 lines): exact / CER / found | 52.8% / 13.7% / 85.7% | **72.9% / 6.7% / 92.9%** |
+| 4 number-heavy Persian synthetic pages (table, pricing, products, dashboard; 236 lines): exact / CER / found | 72.9% / 15.1% / 90.3% | **76.3% / 11.3% / 94.1%** |
 | time for a 1280 x 2561 px page | ~6 s | ~48 s (the second pass is bounded: `MV2CODE_RESCAN_BUDGET`, default 75 s; `MV2CODE_RESCAN=off` skips it) |
 
 * **Second pass** (`mv2code/rescan.py`): lines with a low confidence, a word the list does not know or nothing found are read again from the original image through five variants of the crop (strokes thickened by erosion, gamma-darkened, other height, Persian-only model);

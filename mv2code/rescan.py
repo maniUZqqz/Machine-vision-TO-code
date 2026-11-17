@@ -234,13 +234,18 @@ def rescan(backend, img: np.ndarray, boxes: Sequence, crops: Sequence[np.ndarray
 
         ref = max([_span(it[3]) for it in items] + [1.0])        # the widest reading: a reading that lost a word at an end (a higher average, a shorter text) must not win
 
+        words = len(_LETTER_AR.findall(items[0][0])) >= 3      # the width rule is for lines of words; a number has no 'lost word'
+
         def score(it):
             t, c, _n, r = it
             sp = _span(r)
-            cov = (sp / ref) if sp > 0 else 1.0
+            cov = (sp / ref) if (sp > 0 and words) else 1.0
             return c + 0.03 * (votes[_key(t)] - 1) + 0.1 * _lex_ratio(persian.normalize_line(t, "fa", repair=True, conf=c), lex) + 1.0 * min(0.0, cov - 0.93)
         first = items[0]
         best = max(items[1:], key=score)
-        if score(best) > score(first) + MARGIN:
+        # a reading the engine itself trusts clearly less than the first one never replaces it (a garbled variant must not win on width or votes)
+        if best[1] >= first[1] - 0.02 and score(best) > score(first) + MARGIN:
+            if not words and sum(ch.isalnum() for ch in best[0]) < sum(ch.isalnum() for ch in first[0]):
+                continue                                      # a number that lost a digit is not "more confident", it is shorter
             out[k] = best[3]
     return fix_tokens(backend, out)

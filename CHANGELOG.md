@@ -2,7 +2,19 @@
 
 All notable changes. Numbers come from `python -m bench` on the 80 generated pages (+ the 2 real samples), see [README.md](README.md).
 
+## [2.2.1] - 2026-11-17
+
+Fixes for what the full 80-page benchmark showed right after 2.2.0: table / price / product pages with Persian numbers lost number lines (Persian digit lines that were read before were missing, the digit-script score fell).
+
+### Fixed
+- A run of numbers is a left-to-right run, Persian digits included: `۴۱ ۳۶۳` was reversed inside right-to-left lines, and a line that holds only numbers is ordered left to right.
+- The "icon read as digits" rules need real Persian *letters* in the line (a line of numbers has none, its short digit tokens are numbers); the compact "icon" rule drops only two-digit readings below 60% confidence (3 digits and clear numbers stay, `۱۰` at 50% is still dropped).
+- The second pass never replaces a reading by one the engine trusts clearly less (garbled variants used to win on width or votes), a number is never replaced by a variant with fewer digits, and the "width lost" rule only applies to lines of words.
+- Measured on 4 number-heavy Persian synthetic pages (table, pricing, products, dashboard; 236 DOM lines, `bench.line_eval`): 2.1.1 -> 2.2.1 exact lines 72.9% -> 76.3%, CER 15.1% -> 11.3%, lines found 90.3% -> 94.1%; real chagher.ir page unchanged from 2.2.0 (87.2% exact, CER 3.7%).
+
 ## [2.2.0] - 2026-11-17
+
+**Use 2.2.1.** 2.2.0 damaged lines of numbers (see below); the figures in this entry are those of 2.2.1.
 
 A second look at the lines OCR is unsure about, and honest marking of what is still doubtful. Measured on the same screenshots as 2.1.1 (`python -m bench.line_eval`, Tesseract on CPU,
 brand word given; DOM text is the ground truth): a real Persian landing page (chagher.ir, 1280 px + 390 px, 109 lines) and a synthetic Persian page in Tahoma 13-44 px (1280 + 390 px, 70 lines):
@@ -12,10 +24,10 @@ brand word given; DOM text is the ground truth): a real Persian landing page (ch
 | real page: lines read exactly | 75.2% | **87.2%** (1280 px 88.9%, 390 px 85.5%) |
 | real page: character error rate | 8.6% | **3.7%** |
 | real page: lines found at all | 93.6% | **95.4%** |
-| Tahoma page: lines read exactly | 52.8% | **74.3%** |
-| Tahoma page: character error rate | 13.7% | **4.6%** |
-| Tahoma page: lines found at all | 85.7% | **91.4%** |
-| all four screenshots: exact / CER / found | 66.4% / 10.6% / 90.5% | **82.1% / 4.0% / 93.8%** |
+| Tahoma page: lines read exactly | 52.8% | **72.9%** |
+| Tahoma page: character error rate | 13.7% | **6.7%** |
+| Tahoma page: lines found at all | 85.7% | **92.9%** |
+| all four screenshots: exact / CER / found | 66.4% / 10.6% / 90.5% | **81.6% / 4.8% / 94.4%** |
 | time per page (1280 x 2561 real page) | ~6 s | ~48 s (bounded, see below) |
 
 ### Added
