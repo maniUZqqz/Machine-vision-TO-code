@@ -52,6 +52,11 @@ def _alnum_ratio(s: str) -> float:
     return n / max(1, len(s.replace(" ", "")))
 
 
+def select_candidates(an: Analysis):
+    """The text-line candidates that are sent to OCR (and, for external engines, the crops of exactly these boxes)."""
+    return [c for c in an.cands if c.box[3] >= 5 and c.box[2] >= 3 and c.box[3] <= 160]
+
+
 def read_text(an: Analysis, backend: Backend, lang: str = "auto", ocr_lines=None, min_conf: float = 0.30):
     """Returns (text lines, non-text candidate boxes)."""
     img = an.img
@@ -69,18 +74,18 @@ def read_text(an: Analysis, backend: Backend, lang: str = "auto", ocr_lines=None
             if 6 <= w <= 72 and 6 <= h <= 72 and w / max(1, h) <= 3.2 and h / max(1, w) <= 3.2 and not _corner_artifact(c.box, an.regions):
                 nontext.append(c.box)
         return lines, nontext
-    cands = [c for c in an.cands if c.box[3] >= 5 and c.box[2] >= 3 and c.box[3] <= 160]
+    cands = select_candidates(an)
     if not cands:
         return lines, nontext
     crops = [prepare_crop(img, c.box) for c in cands]
-    res: List[OcrResult] = backend.read(crops, lang)
+    res: List[OcrResult] = backend.read_boxes(crops, [c.box for c in cands], lang)
     for c, r in zip(cands, res):
         t = (r.text or "").strip()
         w, h = c.box[2], c.box[3]
         compact = max(w, h) <= 72 and w / max(1, h) <= 3.2 and h / max(1, w) <= 3.2
         letters = sum(1 for ch in t if ch.isalnum())
-        if w / max(1, h) > 22 or h / max(1, w) > 6:
-            continue  # rules and bars, not text
+        if (w / max(1, h) > 22 or h / max(1, w) > 6) and not (letters >= 4 and r.conf >= 0.5 and _alnum_ratio(t) >= 0.7):
+            continue  # rules and bars, not text (a long one-line paragraph is 30+ times wider than tall and IS text)
         ok = letters >= 1 and _alnum_ratio(t) >= 0.5
         if letters == 1:
             # a lone character is almost always an icon glyph; keep clear digits only
@@ -110,11 +115,17 @@ def _corner_artifact(b: Box, regions) -> bool:
     return False
 
 
-def postprocess_lines(lines: List[TL], zwnj: bool = True):
+def postprocess_lines(lines: List[TL], zwnj: bool = True, glossary=None, repair: bool = True):
+    """Persian clean-up of the OCR text of every line (letters, digits, half-spaces, ،؟ punctuation) and the word-list repair of non-words
+    (``repair=False`` to skip it; ``glossary`` = brand words that must stay as they are and may attract near misses)."""
     raw = [ln.text for ln in lines]
     pdig = persian.decide_page_digits(raw)
+    protected = None
+    if repair:
+        from . import lexicon
+        protected = lexicon.repeated_words(persian.normalize_line(t, pdig, zwnj=zwnj, repair=False) for t in raw)
     for ln in lines:
-        ln.text = persian.normalize_line(ln.text, pdig, zwnj=zwnj)
+        ln.text = persian.normalize_line(ln.text, pdig, zwnj=zwnj, conf=ln.conf, glossary=glossary, protected=protected, repair=repair)
         ln.rtl = persian.is_rtl(ln.text)
     texts = [ln.text for ln in lines if ln.text]
     return pdig, persian.page_direction(texts)

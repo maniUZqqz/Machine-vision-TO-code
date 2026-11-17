@@ -130,6 +130,11 @@ def find_candidates(img: np.ndarray, S: np.ndarray, photos, line_boxes: List[Box
                 a2 = S[y + 2:y + h - 2, min(W, x + w + 1):min(W, x + w + 3)]
             if (a1.size == 0 or a1.mean() >= 0.9) and (a2.size == 0 or a2.mean() >= 0.9):
                 ink[y:y + h, x:x + w] = 0
+    return _fix_leaky(img, _lines_from_ink(ink), regions or [])
+
+
+def _lines_from_ink(ink: np.ndarray) -> List[Cand]:
+    """Ink mask (1 = ink) -> tight text-line candidates (shared by the page-wide and the inside-a-button detectors)."""
     # typical glyph component height
     n, lab, st, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
     hs = st[1:, cv2.CC_STAT_HEIGHT]
@@ -161,3 +166,58 @@ def find_candidates(img: np.ndarray, S: np.ndarray, photos, line_boxes: List[Box
         out.append(Cand(box=b, n_comp=len(g), ink=dens))
     out.sort(key=lambda c: (c.box[1], c.box[0]))
     return out
+
+
+def _inner_lines(img: np.ndarray, r) -> List[Cand]:
+    """Text lines *inside* one button-sized region, found against the region's own local background (median filter), so gradient fills,
+    soft shadows and the outline do not matter.  Boxes are in page coordinates."""
+    x, y, w, h = r.box
+    bwid = max([v[0] for v in (r.border or {}).values()] or [0])
+    inset = int(round(max(3.0, 0.28 * r.radius, bwid + 2.0)))
+    ix, iy, iw, ih = x + inset, y + inset, w - 2 * inset, h - 2 * inset
+    H, W = img.shape[:2]
+    ix, iy = max(0, ix), max(0, iy)
+    iw, ih = min(iw, W - ix), min(ih, H - iy)
+    if iw < 16 or ih < 8:
+        return []
+    sub = np.ascontiguousarray(img[iy:iy + ih, ix:ix + iw])
+    k = int(np.clip(ih // 2 * 2 + 1, 9, 41))
+    bg = cv2.medianBlur(sub, k)
+    d = np.abs(sub.astype(np.int16) - bg.astype(np.int16)).max(axis=2)
+    top = float(np.percentile(d, 99.5))
+    if top < 30:
+        return []
+    ink = (d > max(26, int(0.30 * top))).astype(np.uint8)
+    out = []
+    for c in _lines_from_ink(ink):
+        bx, by, bw, bh = c.box
+        if bh < 6 or bw < 3:
+            continue
+        out.append(Cand(box=(bx + ix, by + iy, bw, bh), n_comp=c.n_comp, ink=c.ink))
+    return out
+
+
+def _fix_leaky(img: np.ndarray, cands: List[Cand], regions) -> List[Cand]:
+    """A text candidate that spills out of a button/pill/chip (outline and glow merged with the label, two pills merged into one) cannot be read.
+    For such regions the labels are found again inside the region and replace every candidate that touches it."""
+    if not regions or not cands:
+        return cands
+    cands = list(cands)
+    for r in regions:
+        x, y, w, h = r.box
+        if not (16 <= h <= 150 and 40 <= w <= 800) or r.holes_only:
+            continue
+        touch = [c for c in cands if box_inter(c.box, r.box) > 0]
+        if not touch:
+            continue
+        leaky = [c for c in touch if not (c.box[0] >= x - 3 and c.box[1] >= y - 3 and c.box[0] + c.box[2] <= x + w + 3 and c.box[1] + c.box[3] <= y + h + 3)
+                 and box_inter(c.box, r.box) >= 0.15 * min(c.box[2] * c.box[3], w * h)]
+        if not leaky:
+            continue
+        inner = _inner_lines(img, r)
+        if not inner:
+            continue
+        drop = {id(c) for c in touch}
+        cands = [c for c in cands if id(c) not in drop] + inner
+    cands.sort(key=lambda c: (c.box[1], c.box[0]))
+    return cands

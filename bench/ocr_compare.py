@@ -26,10 +26,14 @@ def main(argv=None):
     ap.add_argument("--backends", default="tesseract")
     ap.add_argument("--data", default=DEFAULT_DATA)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--ids", default="", help="comma list of page ids (default: all); a substring like '-fa-' keeps the matching pages")
     ap.add_argument("--langs", default="auto")
     ap.add_argument("--postprocess", action="store_true", help="apply Persian normalisation to the OCR text")
     a = ap.parse_args(argv)
     ids = sorted(f[:-5] for f in os.listdir(os.path.join(a.data, "gt")) if f.endswith(".json"))
+    if a.ids:
+        keys = [k for k in a.ids.split(",") if k]
+        ids = [i for i in ids if any(k == i or (k.startswith("-") and k in i) for k in keys)]
     if a.limit:
         ids = ids[:a.limit]
     pre = {}

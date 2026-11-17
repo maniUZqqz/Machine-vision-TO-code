@@ -101,18 +101,37 @@ def restore_zwnj(s: str) -> str:
     return s
 
 
+_FA_COMMA = re.compile(r"(?<=[؀-ۿ]),")
+_FA_SEMI = re.compile(r"(?<=[؀-ۿ]);")
+_FA_Q = re.compile(r"(?<=[؀-ۿ])\?")
+
+
+def fix_punctuation(s: str) -> str:
+    """Persian lines use ، ؛ ؟ ; OCR (Latin punctuation model) reads them as , ; ?"""
+    if not has_arabic_script(s):
+        return s
+    s = _FA_COMMA.sub("،", s)
+    s = _FA_SEMI.sub("؛", s)
+    return _FA_Q.sub("؟", s)
+
+
 def clean_line(s: str) -> str:
     s = re.sub(r"[‎‏‪-‮﻿]", "", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
 
-def normalize_line(s: str, page_digits: str = "fa", zwnj: bool = True) -> str:
+def normalize_line(s: str, page_digits: str = "fa", zwnj: bool = True, conf: float = 0.7, glossary=None, protected=None, repair: bool = True) -> str:
     s = clean_line(normalize_letters(s))
     rtl = is_rtl(s) or (script_ratio(s) == 0 and page_digits == "fa" and any(ch.isdigit() for ch in s) and False)
     s = fix_digits(s, page_digits, rtl)
     if zwnj and has_arabic_script(s):
         s = restore_zwnj(s)
+    if has_arabic_script(s):
+        s = fix_punctuation(s)
+        if repair:
+            from . import lexicon
+            s = lexicon.correct_text(s, conf, glossary, protected)
     return s
 
 
