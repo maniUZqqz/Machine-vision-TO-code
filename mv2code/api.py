@@ -11,6 +11,7 @@ from .imaging import load_image
 from .layout import layout_tree
 from .ocr import Backend, CallbackBackend, get_backend, prepare_crop
 from .pipeline import analyze
+from . import review as _review
 
 
 def convert(image, mode: str = "responsive", lang: str = "auto", ocr: str = "auto", refine="auto",
@@ -42,6 +43,7 @@ def convert(image, mode: str = "responsive", lang: str = "auto", ocr: str = "aut
     lines, nontext = read_text(an, backend, lang, ocr_lines)
     t3 = time.perf_counter()
     pdig, page_dir = postprocess_lines(lines, glossary=glossary, repair=opts.get("repair", True) and ocr_lines is None)
+    n_check = _review.flag_lines(lines, glossary, from_ocr=ocr_lines is None and backend.name != "none")
     if lang == "fa":
         page_dir = "rtl"
     elif lang == "en":
@@ -61,6 +63,7 @@ def convert(image, mode: str = "responsive", lang: str = "auto", ocr: str = "aut
                   report=dict(version=__version__, mode=mode, lang=lang, page_direction=page_dir, ocr=backend.name, ocr_stats=getattr(backend, "stats", None),
                               digits="persian" if pdig == "fa" else "latin", size=list(an.size), scale=info["scale"],
                               regions=len(an.regions), text_lines=len(lines), nodes=sum(1 for _ in root.walk()),
+                              review_lines=n_check, review=_review.report_items(lines),
                               seconds=dict(load=round(t1 - t0, 3), analyze=round(t2 - t1, 3), ocr=round(t3 - t2, 3),
                                            build=round(t4 - t3, 3), refine=round(t5 - t4, 3), total=round(t5 - t0, 3)),
                               refine=refine_report))

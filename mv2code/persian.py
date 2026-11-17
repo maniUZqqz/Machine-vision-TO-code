@@ -115,6 +115,20 @@ def fix_punctuation(s: str) -> str:
     return _FA_Q.sub("؟", s)
 
 
+_TRAIL_PLUS = re.compile(r"(?<![^\s])([0-9۰-۹][0-9۰-۹.,٬٫]*)\+(?![^\s])")
+_LEAD_PCT = re.compile(r"(?<![^\s])([%٪])([0-9۰-۹][0-9۰-۹.,٬٫]*)(?![^\s])")
+
+
+def fix_trailing_plus(s: str) -> str:
+    """On a right-to-left page the sign of a number sits on the other side in the pixels than in the text: ``+۵۰۰`` is displayed as ``۵۰۰+`` and
+    ``100%`` as ``%100``.  OCR returns what it sees; the page's text is the other way round.  Applies to number tokens of Persian lines and of
+    lines without Latin letters (``500+ clients`` in an English line stays)."""
+    if _LATIN.search(s) and not has_arabic_script(s):
+        return s
+    s = _TRAIL_PLUS.sub(lambda m: "+" + m.group(1), s)
+    return _LEAD_PCT.sub(lambda m: m.group(2) + m.group(1), s)
+
+
 def clean_line(s: str) -> str:
     s = re.sub(r"[‎‏‪-‮﻿]", "", s)
     s = re.sub(r"\s+", " ", s).strip()

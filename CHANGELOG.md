@@ -2,6 +2,50 @@
 
 All notable changes. Numbers come from `python -m bench` on the 80 generated pages (+ the 2 real samples), see [README.md](README.md).
 
+## [2.2.0] - 2026-11-17
+
+A second look at the lines OCR is unsure about, and honest marking of what is still doubtful. Measured on the same screenshots as 2.1.1 (`python -m bench.line_eval`, Tesseract on CPU,
+brand word given; DOM text is the ground truth): a real Persian landing page (chagher.ir, 1280 px + 390 px, 109 lines) and a synthetic Persian page in Tahoma 13-44 px (1280 + 390 px, 70 lines):
+
+| | 2.1.1 | **2.2.0** |
+|---|---|---|
+| real page: lines read exactly | 75.2% | **87.2%** (1280 px 88.9%, 390 px 85.5%) |
+| real page: character error rate | 8.6% | **3.7%** |
+| real page: lines found at all | 93.6% | **95.4%** |
+| Tahoma page: lines read exactly | 52.8% | **74.3%** |
+| Tahoma page: character error rate | 13.7% | **4.6%** |
+| Tahoma page: lines found at all | 85.7% | **91.4%** |
+| all four screenshots: exact / CER / found | 66.4% / 10.6% / 90.5% | **82.1% / 4.0% / 93.8%** |
+| time per page (1280 x 2561 real page) | ~6 s | ~48 s (bounded, see below) |
+
+### Added
+- `mv2code/rescan.py`: the doubtful lines (confidence < 90%, a Persian word the list does not know, nothing found) are read again from the original image through five cheap variants of the crop
+  (64 px line height with the strokes thickened by erosion 5x5 / 3x3, gamma-darkened, 48 px gamma + erode, Persian-only model) and the reading the engine itself trusts most is kept:
+  `confidence + 0.03 x (variants that agree) + 0.1 x word-list score - (width lost against the widest reading)`; a variant must win by a margin, so the first reading is never replaced by something worse.
+  Measured on 172 single-line crops: the default crop 62.2% exact, the best single variant (thickened 5x5 at 64 px) 68.6%, best-of-five by confidence 74.4%, oracle 79.1%.
+  Bounded: at most 90 lines and `MV2CODE_RESCAN_BUDGET` seconds (default 75; least confident lines first); `MV2CODE_RESCAN=off` switches it off. Only the Tesseract backend has it.
+- Single doubtful Latin words / numbers inside a Persian line are re-read on their own with the English model (`PDF` read as `۳۵۴`, `100%` as `96100`); every candidate reading gets this before the readings are compared, so a variant that reads `PDF` as digits with a high confidence cannot win.
+- `mv2code/review.py`: lines a person should look at again - OCR confidence below 80%, a Persian word the list does not know (brand words and words repeated 3+ times excluded), Persian letters glued to digits/Latin
+  letters, a stray single character at an end. `convert()` returns them as `report["review"]` (`[{box, text, conf, why}]`, least confident first) and `report["review_lines"]`; a text node of the tree gets `conf` and `"review": true`.
+  Text that did not come from OCR (`ocr_lines`, e.g. read from a browser's DOM) is never flagged.
+- `lexicon.Lexicon.affix_known` / `is_known`: a known stem + a common suffix/prefix (`پیشرفتتان`, `کتابهایی`, `می‌کنم`) is a word, not an OCR slip.
+
+### Fixed
+- Word order of mixed lines: Tesseract returned `PDF خروجی` for the visual line `خروجی PDF`; a Persian line is now read right to left by word position and a run of Latin words/numbers inside it left to right.
+- Number signs: on a right-to-left page `+500` is drawn as `500+` and `100%` as `%100` (OCR returns what it sees); the text order is restored (`fix_trailing_plus`).
+- The word-list repair turned the valid word `پیشرفتتان` into the more frequent `پیشرفت‌های`; a comma read as a hamza (`شماء`) becomes `،`.
+- Near-invisible shapes (a `#f3f5f8` watermark digit on white, soft shadows; colour distance < 22 from their background) are no longer text.
+- Icons read as `۱۰`, `4a`, a lone digit or one/two low-confidence letters next to a Persian line (`2 چغر`, `ه وبلاگ`) are dropped.
+
+### Evaluated, not shipped
+- `tessdata_best` `fas`/`eng` models (3.3 MB / 15 MB instead of the packaged 0.4 MB / 4 MB "fast" ones): +2.2 points exact lines and 2x slower on the same pages; the second pass gives more and keeps the packaged models.
+- A GPU OCR route: the best open Persian recognisers measured in 2.1.0 (EasyOCR `arabic`, PP-OCRv5 `arabic`) are still worse than Tesseract + repair on exact lines, so nothing waits for a GPU node; the plug-in points (`ocr=`, `ocr_crops`, `PrecomputedBackend`) are unchanged.
+
+### Known limits
+- Roughly one line in five on a real page still has a wrong letter or is missing: 13 px light text on dark, stat chips on gradients (`98%`), a few labels inside gradient buttons that the line finder does not find at all.
+  The review flags mark the doubtful ones; for exact text give the page's address (DOM text) or an `ocr_lines` list.
+- The line finder, not OCR, loses some short labels (they never become a candidate); `bench.line_eval` reports them as "found" < 100%.
+
 ## [2.1.1] - 2026-11-17
 
 Same code as 2.1.0. 2.1.0 was committed with Windows line endings (CRLF) by mistake; the text files are LF again and `.gitattributes` keeps them so. Use 2.1.1 (the tag v2.1.0 stays as published).
