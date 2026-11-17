@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mv2code"
-version = "2.1.0"
+version = "2.1.1"
 description = "Screenshot to HTML/CSS with classical computer vision: Persian/English OCR, flex/table layout, honest benchmark"
 readme = "README.md"
 requires-python = ">=3.9"

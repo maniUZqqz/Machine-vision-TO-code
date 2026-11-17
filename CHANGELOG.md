@@ -2,6 +2,10 @@
 
 All notable changes. Numbers come from `python -m bench` on the 80 generated pages (+ the 2 real samples), see [README.md](README.md).
 
+## [2.1.1] - 2026-11-17
+
+Same code as 2.1.0. 2.1.0 was committed with Windows line endings (CRLF) by mistake; the text files are LF again and `.gitattributes` keeps them so. Use 2.1.1 (the tag v2.1.0 stays as published).
+
 ## [2.1.0] - 2026-11-17
 
 Persian text from real screenshots. Measured on a real landing page (chagher.ir at 1280 and 390 px, text known from the DOM, `python -m bench.line_eval`): lines read exactly 61.5% -> 72.5% (75.2% with the brand word), character error rate 18.9% -> 8.7% (8.5%), lines found 89.0% -> 93.6%; synthetic benchmark (80 pages) Persian CER 31.3% -> 14.1%, English 23.8% -> 6.6%.
