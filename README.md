@@ -207,8 +207,8 @@ brand word given) reads the doubtful lines again and marks the ones it is still 
 
 | | v2.1.1 | **v2.2.0** |
 |---|---|---|
-| real page (1280 + 390 px, 109 lines): exact / CER / found | 75.2% / 8.6% / 93.6% | **87.2% / 3.8% / 95.4%** |
-| Tahoma page (1280 + 390 px, 70 lines): exact / CER / found | 52.8% / 13.7% / 85.7% | **71.5% / 5.3% / 91.4%** |
+| real page (1280 + 390 px, 109 lines): exact / CER / found | 75.2% / 8.6% / 93.6% | **87.2% / 3.7% / 95.4%** |
+| Tahoma page (1280 + 390 px, 70 lines): exact / CER / found | 52.8% / 13.7% / 85.7% | **74.3% / 4.6% / 91.4%** |
 | time for a 1280 x 2561 px page | ~6 s | ~48 s (the second pass is bounded: `MV2CODE_RESCAN_BUDGET`, default 75 s; `MV2CODE_RESCAN=off` skips it) |
 
 * **Second pass** (`mv2code/rescan.py`): lines with a low confidence, a word the list does not know or nothing found are read again from the original image through five variants of the crop (strokes thickened by erosion, gamma-darkened, other height, Persian-only model);

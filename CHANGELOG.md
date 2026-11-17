@@ -10,12 +10,12 @@ brand word given; DOM text is the ground truth): a real Persian landing page (ch
 | | 2.1.1 | **2.2.0** |
 |---|---|---|
 | real page: lines read exactly | 75.2% | **87.2%** (1280 px 88.9%, 390 px 85.5%) |
-| real page: character error rate | 8.6% | **3.8%** |
+| real page: character error rate | 8.6% | **3.7%** |
 | real page: lines found at all | 93.6% | **95.4%** |
-| Tahoma page: lines read exactly | 52.8% | **71.5%** |
-| Tahoma page: character error rate | 13.7% | **5.3%** |
+| Tahoma page: lines read exactly | 52.8% | **74.3%** |
+| Tahoma page: character error rate | 13.7% | **4.6%** |
 | Tahoma page: lines found at all | 85.7% | **91.4%** |
-| all four screenshots: exact / CER / found | 66.4% / 10.6% / 90.5% | **81.0% / 4.3% / 93.9%** |
+| all four screenshots: exact / CER / found | 66.4% / 10.6% / 90.5% | **82.1% / 4.0% / 93.8%** |
 | time per page (1280 x 2561 real page) | ~6 s | ~48 s (bounded, see below) |
 
 ### Added
@@ -24,7 +24,7 @@ brand word given; DOM text is the ground truth): a real Persian landing page (ch
   `confidence + 0.03 x (variants that agree) + 0.1 x word-list score - (width lost against the widest reading)`; a variant must win by a margin, so the first reading is never replaced by something worse.
   Measured on 172 single-line crops: the default crop 62.2% exact, the best single variant (thickened 5x5 at 64 px) 68.6%, best-of-five by confidence 74.4%, oracle 79.1%.
   Bounded: at most 90 lines and `MV2CODE_RESCAN_BUDGET` seconds (default 75; least confident lines first); `MV2CODE_RESCAN=off` switches it off. Only the Tesseract backend has it.
-- Single doubtful Latin words / numbers inside a Persian line are re-read on their own with the English model (`PDF` read as `۳۵۴`, `100%` as `96100`).
+- Single doubtful Latin words / numbers inside a Persian line are re-read on their own with the English model (`PDF` read as `۳۵۴`, `100%` as `96100`); every candidate reading gets this before the readings are compared, so a variant that reads `PDF` as digits with a high confidence cannot win.
 - `mv2code/review.py`: lines a person should look at again - OCR confidence below 80%, a Persian word the list does not know (brand words and words repeated 3+ times excluded), Persian letters glued to digits/Latin
   letters, a stray single character at an end. `convert()` returns them as `report["review"]` (`[{box, text, conf, why}]`, least confident first) and `report["review_lines"]`; a text node of the tree gets `conf` and `"review": true`.
   Text that did not come from OCR (`ocr_lines`, e.g. read from a browser's DOM) is never flagged.

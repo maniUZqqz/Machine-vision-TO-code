@@ -214,16 +214,29 @@ def test_a_reading_that_lost_a_word_does_not_win_on_confidence(monkeypatch):
 
 def test_latin_word_misread_as_digits_is_fixed_by_the_english_model():
     class B(TesseractBackend):
+        answer = ("PDF", 96.0)
+
         def installed_langs(self):
             return ["eng", "fas"]
 
         def _read_word(self, crop, la, psm=8, whitelist=""):
-            return ("PDF", 96.0)
+            return self.answer
 
-    r = OcrResult("خروجی ۳۲۰۴", 0.7, 2, ws=[(1, 1, 1, 88, "خروجی", 89.0, 89, 18, 30), (1, 1, 1, 21, "۳۲۰۴", 51.0, 57, 17, 23)])
-    r.src = np.full((80, 200), 255, np.uint8)
-    out = rescan.fix_tokens(B(), [r])
-    assert out[0].text == "خروجی PDF"
-    r2 = OcrResult("خروجی ۳۲۰۴", 0.95, 2, ws=[(1, 1, 1, 88, "خروجی", 95.0, 89, 18, 30), (1, 1, 1, 21, "۳۲۰۴", 95.0, 57, 17, 23)])
-    r2.src = r.src
-    assert rescan.fix_tokens(B(), [r2])[0].text == "خروجی ۳۲۰۴"                 # a confident number is not touched
+    def line(conf):
+        r = OcrResult("خروجی ۳۲۰۴", 0.7, 2, ws=[(1, 1, 1, 88, "خروجی", 89.0, 89, 18, 30), (1, 1, 1, 21, "۳۲۰۴", conf, 57, 17, 23)])
+        r.src = np.full((80, 200), 255, np.uint8)
+        return r
+
+    assert rescan.fix_tokens(B(), [line(51.0)])[0].text == "خروجی PDF"
+    # digits read with a high confidence that the English model reads as a clear acronym are the acronym (the second pass compares fixed candidates)
+    assert rescan.fix_tokens(B(), [line(95.0)])[0].text == "خروجی PDF"
+    # a confident number stays when the English model does not read a clear word
+    weak = B()
+    weak.answer = ("YOY", 62.0)
+    assert rescan.fix_tokens(weak, [line(95.0)])[0].text == "خروجی ۳۲۰۴"
+    weak.answer = ("oO", 95.0)                       # not an acronym / word shape
+    assert rescan.fix_tokens(weak, [line(95.0)])[0].text == "خروجی ۳۲۰۴"
+    # a Latin line is never touched (no Persian letters around the token)
+    only = OcrResult("۳۲۰۴", 0.5, 1, ws=[(1, 1, 1, 21, "۳۲۰۴", 51.0, 57, 17, 23)])
+    only.src = np.full((80, 200), 255, np.uint8)
+    assert rescan.fix_tokens(B(), [only])[0].text == "۳۲۰۴"

@@ -108,6 +108,15 @@ _LATIN_TOKEN = re.compile(r"^[A-Za-z][A-Za-z0-9&+.\-]{1,11}$")
 _NUM_TOKEN = re.compile(r"^[+%]?[0-9][0-9.,]*%?$")
 
 
+_ACRONYM = re.compile(r"^[A-Z][A-Za-z]{1,9}$")
+
+
+def _digit_token(text: str) -> bool:
+    """two or more digits (any script) and nothing else: what the Persian model makes of a bold Latin acronym (``PDF`` -> ``۳۱۴``)"""
+    t = text.rstrip(".")
+    return len(t) >= 2 and all(ch.isdigit() for ch in t)
+
+
 def _suspect_token(text: str, conf: float) -> bool:
     """a Latin word / number inside a Persian line that was read with a doubtful confidence (an icon, ``PDF`` read as ``۳۵۴``, ``100%`` as ``96100``)"""
     if conf >= 90 or _LETTER_AR.search(text):
@@ -128,7 +137,7 @@ def fix_tokens(backend, results: list) -> list:
         new, changed = list(ws), False
         H, W = src.shape[:2]
         for i, w in enumerate(ws):
-            if len(w) < 9 or not _suspect_token(w[4], w[5]):
+            if len(w) < 9 or not (_suspect_token(w[4], w[5]) or _digit_token(w[4])):
                 continue
             x0, x1 = max(0, w[3] - 6), min(W, w[3] + w[6] + 6)
             y0, y1 = max(0, w[7] - 6), min(H, w[7] + w[8] + 6)
@@ -144,10 +153,17 @@ def fix_tokens(backend, results: list) -> list:
             except Exception:  # noqa: BLE001
                 continue
             tok = None
+            a_t = a_t.strip("-–—_ ")
             if (_LATIN_TOKEN.match(a_t) or _NUM_TOKEN.match(a_t)) and a_c >= 85 and a_c >= w[5] + 10 and a_t != w[4]:
                 tok, cf = a_t, a_c
+            elif _NUM_TOKEN.match(a_t) and any(ch in a_t for ch in "%+") and a_c >= 88 and a_c >= w[5] + 2 and a_t != w[4]:
+                tok, cf = a_t, a_c                         # a sign (%, +) is something the Persian model cannot read: it becomes digits (``100%`` -> ``96100``)
+            elif _digit_token(w[4]) and _ACRONYM.match(a_t.rstrip(".")) and (a_c >= 88 or (a_c >= 80 and a_c >= w[5] + 12)):
+                tok, cf = a_t, a_c                         # digits that the English model reads as a clear acronym: the digits were a misread of it
+            if tok is not None and w[4].endswith(".") and not tok.endswith("."):
+                tok += "."
             if tok is not None:
-                new[i] = w[:4] + (tok, cf) + w[6:]
+                new[i] = w[:4] + (tok, max(cf, 90.0)) + w[6:]            # checked on its own: keep it out of the junk filter for Latin words at a line end
                 changed = True
         if changed:
             r2 = backend._assemble(new)
@@ -207,6 +223,8 @@ def rescan(backend, img: np.ndarray, boxes: Sequence, crops: Sequence[np.ndarray
             break
     out = list(results)
     for _, k in todo:
+        fixed = fix_tokens(backend, [it[3] for it in cands[k]])         # every candidate gets its Latin words / numbers re-read before they are compared
+        cands[k] = [(f.text, f.conf, it[2], f) for it, f in zip(cands[k], fixed)]
         items = cands[k]
         if len(items) < 2:
             continue
