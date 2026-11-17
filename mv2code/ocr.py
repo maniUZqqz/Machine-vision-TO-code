@@ -236,6 +236,7 @@ class TesseractBackend(Backend):
         return [r or OcrResult("", 0.0) for r in out]
 
     _AR = re.compile("[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]")
+    _AR_LETTER = re.compile("[ء-يٱ-ۓݐ-ݿﭐ-﷿ﹰ-﻿]")        # Arabic-script LETTERS (no digits: the Persian digits lie inside the range of _AR)
     _LAT = re.compile("[A-Za-z]")
 
     @classmethod
@@ -246,14 +247,15 @@ class TesseractBackend(Backend):
         la = sum(len(cls._LAT.findall(w[4])) for w in ws)
         if ar < 2 or ar < la:
             return ws
+        arl = sum(len(cls._AR_LETTER.findall(w[4])) for w in ws)      # a line of numbers has no letters: its digit tokens are numbers, not icons
         keep = []
         order = sorted(range(len(ws)), key=lambda i: ws[i][3]) if all(len(w) >= 7 for w in ws) else list(range(len(ws)))
         edge = {order[0], order[-1]}
         for i, w in enumerate(ws):
             t, cf = w[4], w[5]
-            if i in edge and len(t) == 1 and t.isdigit() and cf < 97 and len(ws) >= 2 and all(len(x) >= 7 for x in ws) and cls._set_apart(ws, i):
+            if arl >= 2 and i in edge and len(t) == 1 and t.isdigit() and cf < 97 and len(ws) >= 2 and all(len(x) >= 7 for x in ws) and cls._set_apart(ws, i):
                 continue                                  # one digit set apart from a Persian line: an icon read as a digit (``2 چغر``)
-            if i in edge and len(t) <= 2 and t.isdigit() and cf < 90 and len(ws) >= 3:
+            if arl >= 2 and i in edge and len(t) <= 2 and t.isdigit() and cf < 90 and len(ws) >= 3:
                 continue                                  # one or two digits at the end of a Persian line: an icon (a dot, a badge, an arrow)
             if not cls._AR.search(t) and not any(ch.isdigit() for ch in t):
                 letters = len(cls._LAT.findall(t))
@@ -317,10 +319,10 @@ class TesseractBackend(Backend):
         tops = [w[7] + w[8] / 2.0 for w in ws]
         if max(tops) - min(tops) > 0.8 * med_h:
             return ws                                         # several text lines in one crop: keep tesseract's order
-        ar = sum(len(cls._AR.findall(w[4])) for w in ws)
+        ar = sum(len(cls._AR_LETTER.findall(w[4])) for w in ws)
         la = sum(len(cls._LAT.findall(w[4])) for w in ws)
         if ar < 2 or ar < la:
-            return sorted(ws, key=lambda w: w[3])             # a Latin line: left to right
+            return sorted(ws, key=lambda w: w[3])             # a Latin line or a line of numbers: left to right
         out = sorted(ws, key=lambda w: -(w[3] + w[6] / 2.0))  # a Persian line: right to left
         i = 0
         while i < len(out):                                   # runs of Latin/digit words read left to right
@@ -337,7 +339,8 @@ class TesseractBackend(Backend):
 
     @classmethod
     def _latin_word(cls, t: str) -> bool:
-        return not cls._AR.search(t) and any(ch.isalnum() for ch in t)
+        """a word that is read left to right inside a Persian line: Latin words and numbers (Persian digits too)"""
+        return not cls._AR_LETTER.search(t) and any(ch.isalnum() for ch in t)
 
     @staticmethod
     def _assemble(ws) -> OcrResult:

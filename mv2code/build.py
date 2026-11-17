@@ -113,8 +113,8 @@ def read_text(an: Analysis, backend: Backend, lang: str = "auto", ocr_lines=None
         ok = letters >= 1 and _alnum_ratio(t) >= 0.5
         short = t.replace(" ", "")
         mixed = any(ch.isdigit() for ch in short) and any(ch.isalpha() for ch in short)
-        if compact and 2 <= len(short) <= 3 and ((short.isdigit() and r.conf < 0.9) or (mixed and r.conf < 0.97)):
-            ok = False        # an icon or a badge read as ``۱۰`` / ``4a`` (icons look like digits to OCR; real numbers are read with a high confidence)
+        if compact and 2 <= len(short) <= 3 and ((short.isdigit() and len(short) == 2 and r.conf < 0.6) or (mixed and r.conf < 0.97)):
+            ok = False        # an icon or a badge read as ``۱۰`` / ``4a`` (icons look like digits to OCR; a real two-digit number is read with a better confidence; 3 digits stay)
         elif letters == 1:
             # a lone character is almost always an icon glyph; keep clear digits only
             ok = ok and t.strip().isdigit() and r.conf >= 0.9 and h >= 10 and not (c.n_comp == 1 and w <= 12)
