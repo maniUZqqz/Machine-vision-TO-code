@@ -10,6 +10,7 @@ Fixes for what the full 80-page benchmark showed right after 2.2.0: table / pric
 - A run of numbers is a left-to-right run, Persian digits included: `۴۱ ۳۶۳` was reversed inside right-to-left lines, and a line that holds only numbers is ordered left to right.
 - The "icon read as digits" rules need real Persian *letters* in the line (a line of numbers has none, its short digit tokens are numbers); the compact "icon" rule drops only two-digit readings below 60% confidence (3 digits and clear numbers stay, `۱۰` at 50% is still dropped).
 - The second pass never replaces a reading by one the engine trusts clearly less (garbled variants used to win on width or votes), a number is never replaced by a variant with fewer digits, and the "width lost" rule only applies to lines of words.
+- Synthetic 24-page quick benchmark (clean fonts), 2.1.1 -> 2.2.1: Persian present 81.2% -> 84.0%, Persian CER 17.0% -> 14.5%, structure macro-F1 85.7% -> 86.8%, SSIM unchanged; worse: Persian text in the right place 66.4% -> 64.9%, responsive re-flow ok 75.0% -> 68.1%, 4.8 s -> 26.6 s per page (`bench/results-v2.2.1-quick.json`).
 - Measured on 4 number-heavy Persian synthetic pages (table, pricing, products, dashboard; 236 DOM lines, `bench.line_eval`): 2.1.1 -> 2.2.1 exact lines 72.9% -> 76.3%, CER 15.1% -> 11.3%, lines found 90.3% -> 94.1%; real chagher.ir page unchanged from 2.2.0 (87.2% exact, CER 3.7%).
 
 ## [2.2.0] - 2026-11-17

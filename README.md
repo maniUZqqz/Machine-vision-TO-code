@@ -212,6 +212,11 @@ brand word given) reads the doubtful lines again and marks the ones it is still 
 | 4 number-heavy Persian synthetic pages (table, pricing, products, dashboard; 236 lines): exact / CER / found | 72.9% / 15.1% / 90.3% | **76.3% / 11.3% / 94.1%** |
 | time for a 1280 x 2561 px page | ~6 s | ~48 s (the second pass is bounded: `MV2CODE_RESCAN_BUDGET`, default 75 s; `MV2CODE_RESCAN=off` skips it) |
 
+**Synthetic benchmark, 24-page quick set** (`python -m bench run --quick --refine off`, `MV2CODE_RESCAN_BUDGET=300`, committed as `bench/results-v2.2.1-quick.json`; BEFORE = the same pages from the 2.1.1 `bench/results.json`).
+These pages use clean fonts, so most of the gain of this release (real screenshots) does not show here; what it shows: Persian text present 81.2% -> **84.0%**, Persian CER 17.0% -> **14.5%**, structure macro-F1 85.7% -> 86.8%,
+SSIM 85.9% -> 85.8% (unchanged), English unchanged (97.0%, CER 2.5%); real sample `1524.png` SSIM 93.0% -> 93.0%. **Worse:** Persian text "in the right place" 66.4% -> 64.9%, responsive re-flow ok at 360/768/1280 px 75.0% -> 68.1%, and 4.8 s -> 26.6 s per page.
+(A first full 80-page run of 2.2.0 on a loaded server, before the number-line fix, had Persian CER 14.1% -> 14.0% and responsive ok 72.5% -> 72.1%; use the 2.2.1 numbers.)
+
 * **Second pass** (`mv2code/rescan.py`): lines with a low confidence, a word the list does not know or nothing found are read again from the original image through five variants of the crop (strokes thickened by erosion, gamma-darkened, other height, Persian-only model);
   the variant the engine trusts most wins (`confidence + agreement + word-list score - width lost`), never by less than a margin, so a reading is only replaced by a better one. Single Latin words/numbers in a Persian line (`PDF`, `100%`) are re-read with the English model.
 * **Word order and signs**: a Persian line is read right to left by position (Latin runs inside it left to right), `500+` -> `+500` and `%100` -> `100%` on right-to-left pages, a comma read as a hamza -> `،`, a known stem with a suffix is not "repaired" into another word.
