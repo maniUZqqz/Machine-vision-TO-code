@@ -11,7 +11,7 @@ from typing import List
 import cv2
 import numpy as np
 
-from .imaging import Box, box_inter
+from .imaging import Box, box_area, box_inter
 
 
 @dataclass
@@ -199,15 +199,20 @@ def _inner_lines(img: np.ndarray, r) -> List[Cand]:
 
 def _fix_leaky(img: np.ndarray, cands: List[Cand], regions) -> List[Cand]:
     """A text candidate that spills out of a button/pill/chip (outline and glow merged with the label, two pills merged into one) cannot be read.
-    For such regions the labels are found again inside the region and replace every candidate that touches it."""
+    For such regions the labels are found again inside the region and replace every candidate that touches it.
+
+    Every region is judged against the ORIGINAL candidates (v2.3): one candidate that spans several buttons used to be removed while the first
+    button was fixed, and the other buttons never got their labels back."""
     if not regions or not cands:
         return cands
-    cands = list(cands)
+    orig = list(cands)
+    drop: set = set()
+    add: List[Cand] = []
     for r in regions:
         x, y, w, h = r.box
         if not (16 <= h <= 150 and 40 <= w <= 800) or r.holes_only:
             continue
-        touch = [c for c in cands if box_inter(c.box, r.box) > 0]
+        touch = [c for c in orig if box_inter(c.box, r.box) > 0]
         if not touch:
             continue
         leaky = [c for c in touch if not (c.box[0] >= x - 3 and c.box[1] >= y - 3 and c.box[0] + c.box[2] <= x + w + 3 and c.box[1] + c.box[3] <= y + h + 3)
@@ -217,7 +222,12 @@ def _fix_leaky(img: np.ndarray, cands: List[Cand], regions) -> List[Cand]:
         inner = _inner_lines(img, r)
         if not inner:
             continue
-        drop = {id(c) for c in touch}
-        cands = [c for c in cands if id(c) not in drop] + inner
-    cands.sort(key=lambda c: (c.box[1], c.box[0]))
-    return cands
+        drop |= {id(c) for c in touch}
+        for c in inner:           # two nested regions may find the same label: keep one
+            if not any(box_inter(c.box, o.box) >= 0.6 * min(box_area(c.box), box_area(o.box)) for o in add):
+                add.append(c)
+    if not drop:
+        return orig
+    out = [c for c in orig if id(c) not in drop] + add
+    out.sort(key=lambda c: (c.box[1], c.box[0]))
+    return out

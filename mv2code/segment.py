@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 
 from .imaging import Box, box_area, box_contains, box_inter, mode_color, cdist, hex_of
+from . import gradfit as gf
 
 
 @dataclass
@@ -70,8 +71,8 @@ def smooth_mask(img: np.ndarray, T: Optional[int] = None):
 
 
 # --------------------------------------------------------------------------- regions
-def _fit_gradient(img_crop: np.ndarray, m: np.ndarray, box_off):
-    """Fit colour = c0 + g . (x, y) on masked pixels; return a 2-stop CSS-like gradient or None."""
+def _fit_gradient(img_crop: np.ndarray, m: np.ndarray, box_off, strict: bool = True):
+    """Fit colour = c0 + g . (x, y) on masked pixels; return a 2-stop CSS-like gradient or None (``strict=False``: best effort, whatever the residual)."""
     ys, xs = np.nonzero(m)
     if len(xs) < 200:
         return None
@@ -81,7 +82,7 @@ def _fit_gradient(img_crop: np.ndarray, m: np.ndarray, box_off):
     A = np.stack([xs.astype(np.float64), ys.astype(np.float64), np.ones(len(xs))], 1)
     coef, *_ = np.linalg.lstsq(A, cols, rcond=None)  # 3 x 3 (x,y,1 per channel)
     res = cols - A @ coef
-    if np.median(np.abs(res)) > 2.5 or np.percentile(np.abs(res), 90) > 6:
+    if strict and (np.median(np.abs(res)) > 2.5 or np.percentile(np.abs(res), 90) > 6 or np.percentile(np.abs(res), 98) > 12):
         return None
     G = coef[:2, :].T  # per-channel gradient (3,2)
     u, s, vt = np.linalg.svd(G, full_matrices=False)
@@ -92,7 +93,7 @@ def _fit_gradient(img_crop: np.ndarray, m: np.ndarray, box_off):
     p0, p1 = corners[t.argmin()], corners[t.argmax()]
     c0 = np.array([p0[0], p0[1], 1.0]) @ coef
     c1 = np.array([p1[0], p1[1], 1.0]) @ coef
-    if np.abs(c1 - c0).max() < 10:
+    if np.abs(c1 - c0).max() < (10 if strict else 2):
         return None
     # CSS angle: 0deg = to top, clockwise.  direction vector (dx, dy) with y down.
     ang = (math.degrees(math.atan2(d[0], -d[1])) + 360) % 360
@@ -102,7 +103,93 @@ def _fit_gradient(img_crop: np.ndarray, m: np.ndarray, box_off):
                 c2=tuple(int(np.clip(round(v), 0, 255)) for v in c1))
 
 
-def find_regions(img: np.ndarray, S: np.ndarray, min_area: int = 100, soft_images=None) -> List[Region]:
+def _clean_pieces(crop, parts, min_area):
+    """The connected pieces of a plane split as ``[(mask, piece, ragged_ok), ...]``.
+
+    ``None`` when the gradient pieces are not clean rectangles and no piece dominates (a radial gradient cut into rings by the planes): then
+    the area is better kept as ONE gradient region.  When one gradient piece dominates (>= 55% of the gradient area), the other gradient
+    pieces that are not rectangles are decoration on it (translucent circles of a hero card): they are dropped, the main gradient shows there."""
+    comps = []
+    lead_idx = next((i for i, p in enumerate(parts) if not p["flat"]), -1)       # the biggest gradient piece may have ragged edges (cut by neighbours)
+    for pi, p in enumerate(parts):
+        nn, ll, ss, _ = cv2.connectedComponentsWithStats(p["mask"].astype(np.uint8), connectivity=4)
+        for j in range(1, nn):
+            area = int(ss[j, cv2.CC_STAT_AREA])
+            if area < min_area:
+                continue
+            fr = area / float(max(1, int(ss[j, cv2.CC_STAT_WIDTH]) * int(ss[j, cv2.CC_STAT_HEIGHT])))
+            comps.append(dict(mask=ll == j, piece=p, area=area, fr=fr, lead=(pi == lead_idx)))
+    grad_area = sum(c["area"] for c in comps if not c["piece"]["flat"])
+    lead_area = max([c["area"] for c in comps if c["lead"]] or [0])
+    dominant = grad_area > 0 and lead_area >= 0.55 * grad_area
+    out = []
+    for c in comps:
+        if not c["piece"]["flat"]:
+            if c["fr"] < (0.45 if c["lead"] else 0.8):
+                if dominant and not c["lead"]:
+                    continue                     # decoration on the dominant gradient
+                return None
+        out.append((c["mask"], c["piece"], c["lead"]))
+    return out or None
+
+
+def _fit_gradient_loose(crop, m):
+    return _fit_gradient(crop, m, (0, 0), strict=False)
+
+
+def _region_from_mask(img, crop, m, mx0, my0, grad, regions, ragged_ok=True, verify_ellipse=False):
+    """One smooth piece (bool/uint8 mask in crop coordinates) -> a Region appended to ``regions`` (or nothing when it is not a rectangle/ellipse)."""
+    H, W = img.shape[:2]
+    m = m.astype(np.uint8)
+    cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return False
+    filled = np.zeros_like(m)
+    cv2.drawContours(filled, cnts, -1, 1, -1)
+    area = int(m.sum())
+    fill = mode_color(crop[m.astype(bool)])
+    # restore the 1px lost at edges: grow into pixels of the same colour
+    near = (np.abs(crop.astype(np.int16) - np.array(fill, np.int16)).max(2) <= 8) if grad is None else np.ones(m.shape, bool)
+    m2 = cv2.dilate(filled, np.ones((3, 3), np.uint8)).astype(bool) & near
+    m2 |= filled.astype(bool)
+    ys, xs = np.nonzero(m2)
+    if len(xs) == 0:
+        return False
+    bx0, by0, bx1, by1 = xs.min() + mx0, ys.min() + my0, xs.max() + mx0 + 1, ys.max() + my0 + 1
+    bw, bh = bx1 - bx0, by1 - by0
+    a2 = int(m2.sum())
+    fr = a2 / float(bw * bh)
+    aspect = max(bw, bh) / max(1, min(bw, bh))
+    if 0.68 <= fr < 0.84 and aspect <= 1.35:
+        shape, radius = "ellipse", min(bw, bh) / 2.0
+        if verify_ellipse or min(bw, bh) >= 40:
+            # a big area that only looks round by its fill ratio (the quarter of a translucent circle a card clips): not an ellipse
+            ell = np.zeros(m2.shape, np.uint8)
+            cv2.ellipse(ell, (int((bx0 - mx0) + bw / 2.0), int((by0 - my0) + bh / 2.0)), (max(1, int(bw / 2.0)), max(1, int(bh / 2.0))), 0, 0, 360, 1, -1)
+            e = ell.astype(bool)
+            if (m2 & e).sum() / float(max(1, (m2 | e).sum())) < 0.85:
+                return False
+    elif fr >= 0.80:
+        shape = "rect"
+        loss = bw * bh - a2
+        radius = 0.0 if fr >= 0.992 else min(math.sqrt(max(loss, 0) / 0.8584), min(bw, bh) / 2.0)
+    elif grad is not None and ragged_ok and fr >= 0.45 and bw * bh >= 0.02 * W * H:
+        # a big gradient area with ragged edges (cut by neighbours of nearly the same colour): still one rectangle, never a picture
+        shape, radius = "rect", 0.0
+    else:
+        return False
+    if grad is not None:
+        grad = gf.strip_private(grad)
+        cols = [grad["c1"], grad["c2"]] + [c for _t, c in (grad.get("stops") or [])]
+        if max(max(abs(int(a[k]) - int(b[k])) for k in range(3)) for a in cols for b in cols) < 5:
+            grad = None             # practically one colour: a flat region, not a gradient
+    regions.append(Region(id=len(regions), box=(bx0, by0, bw, bh), inner=(bx0, by0, bw, bh), fill=fill, shape=shape,
+                          radius=round(radius, 1), grad=grad, area=a2))
+    return True
+
+
+
+def find_regions(img: np.ndarray, S: np.ndarray, min_area: int = 100, soft_images=None, T: int = 3) -> List[Region]:
     H, W = img.shape[:2]
     n, labels, stats, _ = cv2.connectedComponentsWithStats(S.astype(np.uint8), connectivity=4)
     regions: List[Region] = []
@@ -126,7 +213,36 @@ def find_regions(img: np.ndarray, S: np.ndarray, min_area: int = 100, soft_image
         near_frac = float((np.abs(crop[m.astype(bool)].astype(np.int16) - np.array(fill, np.int16)).max(1) <= 2).mean())
         grad = None
         if near_frac < 0.75:
-            grad = _fit_gradient(crop, m.astype(bool), (mx0, my0))
+            mb = m.astype(bool)
+            grad = _fit_gradient(crop, mb, (mx0, my0))
+            tailed = None
+            if grad is None and area >= 1500 and min(w, h) >= 24:
+                # not one 2-stop plane: a multi-stop / radial gradient, or several things that touch (gradient band + page colour ...)
+                grad = gf.fit_general(crop, mb)
+                if grad is None:
+                    tailed = gf.fit_general(crop, mb, tails_ok=True)     # one gradient that ends in a long flat colour (the area is maybe one band)
+                    parts = gf.split_planes(crop, mb, tol=max(3.5, 1.2 * T))
+                    pieces = _clean_pieces(crop, parts, min_area) if parts and len(parts) >= 2 else None
+                    if pieces is not None:
+                        for pm, p, lead in pieces:
+                            g = None
+                            if not p["flat"]:
+                                # re-fit on this piece alone: the stops are relative to its own box
+                                g = gf.fit_linear(crop, pm, 3.0, 6.0) or gf.fit_general(crop, pm) or p["grad"]
+                            _region_from_mask(img, crop, pm, mx0, my0, g, regions, ragged_ok=lead, verify_ellipse=True)
+                        continue
+                    if parts and len(parts) == 1:
+                        grad = parts[0]["grad"]
+                        if grad is None and parts[0]["flat"]:
+                            near_frac = 1.0     # one flat colour after all
+                    if grad is None:
+                        grad = tailed
+            if grad is None and near_frac < 0.75 and area >= 1500 and min(w, h) >= 24:
+                # a gradient that melts into the page colour (flat tail) or a mesh/soft background: the best single gradient we can fit.  It stays
+                # CSS (text and buttons on top stay real HTML); a big smooth area never becomes one picture.
+                grad = gf.fit_general(crop, mb, tails_ok=True)
+                if grad is None and (area >= 0.18 * W * H or (w >= 0.55 * W and h >= 90)):
+                    grad = gf.fit_general(crop, mb, relaxed=True, tails_ok=True) or _fit_gradient_loose(crop, mb)
             if grad is None and near_frac < 0.75:
                 # smooth-but-varying blob: a blurry photo / avatar (or a shadow ring: filtered by shape)
                 if soft_images is not None and area >= 300 and min(w, h) >= 18:
@@ -135,28 +251,7 @@ def find_regions(img: np.ndarray, S: np.ndarray, min_area: int = 100, soft_image
                         soft_images.append(Photo(box=(x, y, w, h), round=(abs(w - h) <= 2 and ar < 0.9),
                                                  radius=min(w, h) / 2.0 if (abs(w - h) <= 2 and ar < 0.9) else 0.0))
                 continue
-        # restore the 1px lost at edges: grow into pixels of the same colour
-        near = (np.abs(crop.astype(np.int16) - np.array(fill, np.int16)).max(2) <= 8) if grad is None else np.ones(m.shape, bool)
-        m2 = cv2.dilate(filled, np.ones((3, 3), np.uint8)).astype(bool) & near
-        m2 |= filled.astype(bool)
-        ys, xs = np.nonzero(m2)
-        if len(xs) == 0:
-            continue
-        bx0, by0, bx1, by1 = xs.min() + mx0, ys.min() + my0, xs.max() + mx0 + 1, ys.max() + my0 + 1
-        bw, bh = bx1 - bx0, by1 - by0
-        a2 = int(m2.sum())
-        fr = a2 / float(bw * bh)
-        aspect = max(bw, bh) / max(1, min(bw, bh))
-        if 0.68 <= fr < 0.84 and aspect <= 1.35:
-            shape, radius = "ellipse", min(bw, bh) / 2.0
-        elif fr >= 0.80:
-            shape = "rect"
-            loss = bw * bh - a2
-            radius = 0.0 if fr >= 0.992 else min(math.sqrt(max(loss, 0) / 0.8584), min(bw, bh) / 2.0)
-        else:
-            continue
-        regions.append(Region(id=len(regions), box=(bx0, by0, bw, bh), inner=(bx0, by0, bw, bh), fill=fill, shape=shape,
-                              radius=round(radius, 1), grad=grad, area=a2))
+        _region_from_mask(img, crop, m, mx0, my0, grad, regions)
     return regions
 
 

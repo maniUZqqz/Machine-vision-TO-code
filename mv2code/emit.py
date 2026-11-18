@@ -54,6 +54,20 @@ def css_color(c) -> str:
     return hex_of(c)
 
 
+def css_gradient(g: dict) -> str:
+    """CSS value of a fitted gradient (``segment``/``gradfit`` dict): linear (2..5 stops) or radial (circle, farthest-corner)."""
+    stops = g.get("stops")
+    if g.get("kind") == "radial":
+        head = "radial-gradient(circle farthest-corner at %d%% %d%%" % (round(100 * g.get("cx", 0.5)), round(100 * g.get("cy", 0.5)))
+    else:
+        head = "linear-gradient(%ddeg" % int(g["angle"])
+    if stops and len(stops) > 2:
+        body = ",".join("%s %s%%" % (css_color(c), ("%.1f" % (100 * t)).rstrip("0").rstrip(".")) for t, c in stops)
+    else:
+        body = "%s,%s" % (css_color(g["c1"]), css_color(g["c2"]))
+    return head + "," + body + ")"
+
+
 class Sheet:
     """Collects declaration sets and hands out short class names."""
 
@@ -116,8 +130,7 @@ class Emitter:
     def box_props(self, n: Node, abs_pos: bool = False) -> Dict[str, str]:
         d: Dict[str, str] = {}
         if n.grad:
-            g = n.grad
-            d["background"] = f"linear-gradient({g['angle']}deg,{css_color(g['c1'])},{css_color(g['c2'])})"
+            d["background"] = css_gradient(n.grad)
         elif n.fill is not None:
             d["background"] = css_color(n.fill)
         if n.border:

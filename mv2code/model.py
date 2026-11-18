@@ -56,6 +56,10 @@ class Node:
         if self.grad:
             d["gradient"] = dict(angle=self.grad["angle"], from_=hex_of(self.grad["c1"]), to=hex_of(self.grad["c2"]))
             d["gradient"]["from"] = d["gradient"].pop("from_")
+            if self.grad.get("kind") == "radial":
+                d["gradient"].update(kind="radial", cx=round(float(self.grad.get("cx", 0.5)), 3), cy=round(float(self.grad.get("cy", 0.5)), 3))
+            if len(self.grad.get("stops") or []) > 2:
+                d["gradient"]["stops"] = [dict(at=round(float(t), 3), color=hex_of(c)) for t, c in self.grad["stops"]]
         if self.border:
             d["border"] = {k: dict(width=v[0], color=hex_of(v[1])) for k, v in self.border.items()}
         if self.radius:

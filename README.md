@@ -200,6 +200,26 @@ OCR engines on the same real page (same crops, same clean-up):
 | EasyOCR `arabic` recogniser exported to ONNX (215 MB, 0.7 s per line on 2 CPUs, same crops, same clean-up) | 52.3% | **6.8%** | lower raw error but drops spaces, reads icons as digits and confuses punctuation; 100x the weight: not worth shipping |
 | PP-OCRv5 `arabic_PP-OCRv5_mobile_rec` (ONNX, 8 MB, 0.1 s per line) | 48.6% | 19.3% | short words are excellent (`قیمت`, `سوالات متداول`), long lines lose letters; thin Vazirmatn is not what it was trained on |
 
+### v2.3 (use 2.3.0): gradient bands are CSS, icon digits are gone (before / after)
+
+A full-width gradient hero under the header is the most common landing-page design, and 2.2.x pasted such a page as ONE picture when the end colour of the gradient touched the page colour
+(header, hero and page were one smooth area, no single gradient fitted it, the whole page became a "soft photo": 0 regions, 0 text lines, editable 0-5%). 2.3 fits the gradient from the pixels
+(`mv2code/gradfit.py`: linear with up to 5 stops at any angle, radial with any centre, a piecewise-planar split of the area into flat and gradient parts) and writes `linear-gradient(...)` / `radial-gradient(...)`;
+the text and buttons on the band stay real HTML. `python -m bench run --hero` builds 16 such pages (8 designs x fa/en); `bench/results-hero-v2.3.0.json` has the numbers per page.
+
+| | v2.2.1 | **v2.3.0** |
+|---|---|---|
+| 16 gradient hero pages: editable (real HTML/CSS share) | 67.8% | **100%** |
+| the 8 designs that failed: editable / share of the page that became pictures / regions | 35.5% / 64.5% / 4-6 | **100% / 0% / 11-16** |
+| real chagher.ir 1280 px, 54 lines (`bench.line_eval`, Tesseract, DOM text): exact / CER / found / junk | 87.0% / 2.3% / 98.1% / 5 | **88.9% / 1.3% / 100% / 1** |
+| real chagher.ir 390 px, 55 lines: exact / CER / found / junk | 83.6% / 5.2% / 92.7% / 5 | **92.7% / 0.6% / 100% / 0** |
+| the rendered output vs the screenshot (SSIM, 1280 px real page) | 81.6% | **88.7%** |
+| 24-page quick set (clean fonts): SSIM / editable / Persian CER / responsive ok | 85.8% / 99.8% / 14.5% / 68.1% | 85.7% / 99.8% / 14.4% / 69.4% (unchanged) |
+
+Also fixed on the real page: the label of a gradient button (`شروع رایگان`) was lost when one text candidate spanned several buttons, and icons next to nav items, phone numbers, addresses and social links were read as `8`, `9`, `in`, `88`.
+Honest limits: a decorative translucent circle on a gradient card is dropped (the main gradient shows there); about 1 line in 10 of the real page still has a wrong letter; mesh gradients are approximated by one gradient;
+for exact text pass the page's own text (`ocr_lines`).
+
 ### v2.2 (use 2.2.1): a second look at doubtful lines, and honest marks (before / after)
 
 v2.1 left about one real-page line in four with a wrong letter. v2.2 (`python -m bench.line_eval`, same real chagher.ir screenshots + a synthetic Persian page in Tahoma, DOM text as ground truth, Tesseract on CPU,

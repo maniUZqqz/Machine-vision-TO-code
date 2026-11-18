@@ -95,13 +95,16 @@ def read_text(an: Analysis, backend: Backend, lang: str = "auto", ocr_lines=None
         return lines, nontext
     crops = [prepare_crop(img, c.box) for c in cands]
     res: List[OcrResult] = backend.read_boxes(crops, [c.box for c in cands], lang)
+    first = [((r.text or "").strip(), float(r.conf)) for r in res]
     rescan = getattr(backend, "rescan", None)
     if rescan is not None:                       # second look at the doubtful lines (bigger / thicker / other model); never worse than the first read
         try:
             res = rescan(img, [c.box for c in cands], crops, res, lang)
         except Exception:  # noqa: BLE001 - a failing second pass must never lose the first reading
             pass
-    for c, r in zip(cands, res):
+    rtl_page = _rtl_page([(r.text or "") for r in res], lang)
+    texty = [bool(r.text) and sum(1 for ch in r.text if ch.isalnum()) >= 3 for r in res]
+    for k, (c, r) in enumerate(zip(cands, res)):
         t = (r.text or "").strip()
         w, h = c.box[2], c.box[3]
         compact = max(w, h) <= 72 and w / max(1, h) <= 3.2 and h / max(1, w) <= 3.2
@@ -113,7 +116,7 @@ def read_text(an: Analysis, backend: Backend, lang: str = "auto", ocr_lines=None
         ok = letters >= 1 and _alnum_ratio(t) >= 0.5
         short = t.replace(" ", "")
         mixed = any(ch.isdigit() for ch in short) and any(ch.isalpha() for ch in short)
-        if compact and 2 <= len(short) <= 3 and ((short.isdigit() and len(short) == 2 and r.conf < 0.6) or (mixed and r.conf < 0.97)):
+        if compact and 2 <= len(short) <= 3 and ((short.isdigit() and len(short) == 2 and r.conf < 0.7) or (mixed and r.conf < 0.97)):
             ok = False        # an icon or a badge read as ``۱۰`` / ``4a`` (icons look like digits to OCR; a real two-digit number is read with a better confidence; 3 digits stay)
         elif letters == 1:
             # a lone character is almost always an icon glyph; keep clear digits only
@@ -122,11 +125,58 @@ def read_text(an: Analysis, backend: Backend, lang: str = "auto", ocr_lines=None
             ok = ok and (r.conf >= 0.5 or (letters >= 5 and r.conf >= 0.35))
             if ok and compact and letters <= 2 and r.conf < 0.8 and not any(ch.isdigit() for ch in t):
                 ok = False
+            if ok and letters <= 2 and r.conf < 0.65 and not any(ch.isdigit() for ch in t):
+                ok = False        # two unsure letters in a thin sliver: a fragment of a shape, not a word
+        if ok and compact and _lone_icon_reading(t, short, letters, first[k], r.conf, rtl_page, k, cands, texty, h):
+            ok = False        # a social/phone/pin icon read as a digit or as ``in`` (v2.3)
         if ok:
             lines.append(TL(box=c.box, text=t, conf=r.conf))
         elif compact and w >= 6 and h >= 6 and not _corner_artifact(c.box, an.regions):
             nontext.append(c.box)
     return lines, nontext
+
+
+def _rtl_page(texts, lang: str) -> bool:
+    if lang == "en":
+        return False
+    if lang == "fa":
+        return True
+    ar = sum(1 for t in texts for ch in t if "؀" <= ch <= "ۿ" and ch.isalpha())
+    la = sum(1 for t in texts for ch in t if ch.isascii() and ch.isalpha())
+    return ar > la
+
+
+def _lone_icon_reading(t: str, short: str, letters: int, first, conf: float, rtl_page: bool, k: int, cands, texty, h: int) -> bool:
+    """A candidate that is one glyph or two lowercase Latin letters on a right-to-left page is, far more often than not, an icon that OCR read
+    as a character: ``9`` next to an address (pin), ``in`` (LinkedIn), a tile glyph read as ``۴`` first and ``0`` after the second look.
+    Real lone digits (pagination, counters) have lone digits as neighbours, not lines of text; the first and the second reading of a real
+    character agree."""
+    if not rtl_page:
+        return False
+    one_digit = letters == 1 and t.isdigit()
+    small_latin = len(short) <= 2 and short.isalpha() and short.isascii() and short.islower()
+    if not (one_digit or small_latin or letters <= 1):
+        return False
+    ft, fc = first
+    if letters <= 1 and ft and ft != t and fc < 0.7:
+        return True                              # the reading changed between the passes: not a stable character
+    if small_latin:
+        return True
+    if one_digit and not t.isascii():
+        return False                             # a Persian digit is a number written on purpose
+    if one_digit:
+        x, y, w, hh = cands[k].box
+        cy = y + hh / 2.0
+        for j, o in enumerate(cands):
+            if j == k or not texty[j]:
+                continue
+            ox, oy, ow, oh = o.box
+            if abs(oy + oh / 2.0 - cy) > 0.6 * max(hh, oh):
+                continue
+            gap = max(0, ox - (x + w), x - (ox + ow))
+            if gap <= 3 * max(hh, 12):
+                return True                      # a lone digit beside a line of words: an icon (pin/phone), not a number
+    return False
 
 
 def _corner_artifact(b: Box, regions) -> bool:
