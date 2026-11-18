@@ -2,6 +2,45 @@
 
 All notable changes. Numbers come from `python -m bench` on the 80 generated pages (+ the 2 real samples), see [README.md](README.md).
 
+## [2.3.0] - 2026-11-18
+
+Smooth colour bands are CSS, never one pasted picture; icon digits and the labels of gradient buttons on real pages.
+
+### Fixed
+- **A full-bleed gradient hero was pasted as ONE image** (the most common landing-page design: a hero band under the header whose end colour touches the page colour, e.g. `linear-gradient(135deg,#14264d,#0b1220)` on a `#0b1220` page).
+  Header, hero and page background were one connected smooth area; no single gradient fitted it, so `find_regions` took the whole page for a "soft photo" (regions 0, text lines 0, 100 KB of base64, editable share 0-5%).
+  Now the area is split into its flat and planar parts (`mv2code/gradfit.py`) - header, gradient hero, flat page - and the hero is a CSS gradient region with its text and buttons as real HTML on top.
+- A big smooth area that no gradient model explains is approximated by the best gradient we can fit instead of becoming a picture (text and buttons on top stay real HTML).
+- **The label of a button was lost when one text candidate spanned several buttons** (outline/glow merged them): the first button was fixed and the candidate was removed, the others never got their labels back (`شروع رایگان` on a gradient button). Every region is now judged against the original candidates (`textdet._fix_leaky`).
+- Icons read as characters: a lone Latin digit at the end of a Persian label (`9 شروع رایگان`), one or two unsure characters set apart from the only word of a nav item (`هص وبلاگ`), a pin/phone icon read as a digit beside a line of words, `in` (a social icon), a glyph whose reading changes between the two passes (`۴` then `0`), two unsure digits in a tile (`88`), two unsure letters in a thin sliver.
+- A big region that only looks round by its fill ratio (the quarter of a translucent decoration circle that a card clips) is no longer an ellipse.
+
+### Added
+- `mv2code/gradfit.py`: gradient models fitted from the pixels - linear with up to 5 stops at any angle, radial (any centre, `circle farthest-corner`), and a piecewise-planar split of a smooth area (flat colours and linear gradients; a flat colour wins ties so a header never leaks into a gradient that passes through its colour).
+  `emit.css_gradient` writes them; `tree_json` carries `gradient.stops` / `kind` / `cx` / `cy` for multi-stop and radial gradients (the two-stop form `angle/from/to` is unchanged).
+- Benchmark: `python -m bench run --hero` builds 16 full-bleed gradient hero pages (8 designs x fa/en: seam-dark, seam-light, diagonal dark/light, vivid, three-stop, radial, decorative circles; `bench/templates.py` `HERO_VARIANTS`);
+  the page background touches the end colour of the hero in the designs that failed. `bench/results-hero-v2.3.0.json` has before/after per page.
+- Tests: `tests/test_gradient_bands.py` (11 numpy tests + 3 browser tests on the generated hero pages in URL mode), `tests/test_ocr_v23.py` (7).
+
+### Measured
+Same machine, same pages, 2.2.1 -> 2.3.0.
+
+| | 2.2.1 | **2.3.0** |
+|---|---|---|
+| 16 gradient hero pages: real HTML/CSS share (editable) | 67.8% | **100%** |
+| ... of them the 8 designs that failed: editable / share of the page that became pictures | 35.5% / 64.5% | **100% / 0%** |
+| ... regions found on those 8 | 4-6 | **11-16** |
+| real chagher.ir 1280 px (54 DOM lines): exact / CER / found / junk lines | 87.0% / 2.3% / 98.1% / 5 | **88.9% / 1.3% / 100% / 1** (a quiet server: 90.7% / 1.1% / 100% / 0) |
+| real chagher.ir 390 px (55 lines): exact / CER / found / junk lines | 83.6% / 5.2% / 92.7% / 5 | **92.7% / 0.6% / 100% / 0** |
+| real chagher.ir 1280 px rendered output vs the screenshot (SSIM) | 81.6% | **88.7%** |
+| 24-page quick set (clean fonts): SSIM / editable / Persian CER / English CER | 85.8% / 99.8% / 14.5% / 2.5% | 85.7% / 99.8% / 14.4% / 2.4% (no change) |
+| 24-page quick set: Persian present / structure F1 / responsive ok | 84.0% / 86.8% / 68.1% | 84.3% / 87.0% / 69.4% |
+
+(The chagher.ir numbers are the page as it was on 2026-11-18, both engines on the same screenshots, DOM text as ground truth, Tesseract on CPU, brand word not given; the second OCR pass is time-boxed, so a loaded server gives a slightly lower number than a quiet one.
+The 24-page run took 42 s per page against 27 s because the server was busy with other work, not because of the engine: the hero pages convert in 1-8 s.)
+Not fixed: about 1 line in 10 on the real page still has a wrong letter (`چفر` for `چغر`, a comma read as a colon), a decorative translucent circle on a gradient card is dropped (the main gradient shows there), and
+for 100% exact text the page address (DOM text) is still the answer.
+
 ## [2.2.1] - 2026-11-17
 
 Fixes for what the full 80-page benchmark showed right after 2.2.0: table / price / product pages with Persian numbers lost number lines (Persian digit lines that were read before were missing, the digit-script score fell).

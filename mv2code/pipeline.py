@@ -41,7 +41,7 @@ def analyze(img: np.ndarray) -> Analysis:
     H, W = img.shape[:2]
     S, T = sg.smooth_mask(img)
     soft: list = []
-    regs = sg.find_regions(img, S, soft_images=soft)
+    regs = sg.find_regions(img, S, soft_images=soft, T=T)
     for r in regs:
         sg.analyse_outline(img, r)
     regs = sg.merge_stacks(img, regs)

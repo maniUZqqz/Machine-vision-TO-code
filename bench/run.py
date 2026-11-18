@@ -20,7 +20,7 @@ import numpy as np
 
 from . import metrics as M
 from .render import Browser, ensure_fonts
-from .templates import make_page, page_specs
+from .templates import hero_specs, make_page, page_specs
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_DATA = os.environ.get("MV2CODE_BENCH_DATA", os.path.join(ROOT, "bench_cache"))
@@ -323,9 +323,11 @@ def run(args) -> int:
         specs = page_specs(False)
     if args.limit:
         specs = specs[:args.limit]
+    if getattr(args, "hero", False):
+        specs = hero_specs()
     if args.ids:
         want = set(args.ids.split(","))
-        specs = [s for s in page_specs(True) if ("%s-%s-%s-%d" % s) in want]
+        specs = [s for s in page_specs(True) + hero_specs() if ("%s-%s-%s-%d" % s) in want]
     data_dir = os.path.abspath(args.data)
     out_dir = os.path.abspath(args.outdir or os.path.join(data_dir, "out-%s-%s" % (args.engine, args.mode)))
     t_all = time.time()
@@ -372,6 +374,7 @@ def main(argv=None) -> int:
     g = r.add_mutually_exclusive_group()
     g.add_argument("--quick", action="store_true", help="24 pages (default)")
     g.add_argument("--full", action="store_true", help="all 80 synthetic pages")
+    g.add_argument("--hero", action="store_true", help="only the 16 full-bleed gradient hero pages (v2.3)")
     r.add_argument("--engine", default="mv2code", choices=["mv2code", "legacy"])
     r.add_argument("--mode", default="responsive", choices=["responsive", "exact"])
     r.add_argument("--ocr", default="auto")

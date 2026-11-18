@@ -257,6 +257,10 @@ class TesseractBackend(Backend):
                 continue                                  # one digit set apart from a Persian line: an icon read as a digit (``2 چغر``)
             if arl >= 2 and i in edge and len(t) <= 2 and t.isdigit() and cf < 90 and len(ws) >= 3:
                 continue                                  # one or two digits at the end of a Persian line: an icon (a dot, a badge, an arrow)
+            if arl >= 2 and i in edge and len(ws) >= 3 and len(t) == 1 and t in "0123456789" and cf < 96:
+                continue                                  # a lone Latin digit at an end of a Persian label (``9 شروع رایگان``): the icon of the button
+            if arl >= 2 and i in edge and len(ws) == 2 and len(t) <= 2 and cf < 85 and all(len(x) >= 7 for x in ws) and cls._set_apart(ws, i)                     and sum(len(cls._AR_LETTER.findall(x[4])) for x in ws if x is not w) >= 3:
+                continue                                  # one or two unsure characters set apart from the only word (``هص وبلاگ``): the icon of the nav item
             if not cls._AR.search(t) and not any(ch.isdigit() for ch in t):
                 letters = len(cls._LAT.findall(t))
                 if letters == 0 and i not in edge and all(ch in "—–-/·•.:،" for ch in t):

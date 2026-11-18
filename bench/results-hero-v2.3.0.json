@@ -1,0 +1,364 @@
+{
+ "meta": {
+  "what": "16 full-bleed gradient hero pages (bench/templates.py HERO_VARIANTS x fa/en), responsive mode, OCR off (editable share, picture share and region count do not depend on the text reading)",
+  "before": "2.2.1",
+  "after": "2.3.0",
+  "date": "2026-11-18T03:48:56+00:00",
+  "how": "python -m bench run --hero builds the pages; the numbers here come from the same pages rendered at their own width, converted with convert(ocr='none') and scored with mv2code.score.compare"
+ },
+ "summary": {
+  "all16": {
+   "editable": [
+    0.6775312499999999,
+    1.0
+   ],
+   "picture": [
+    0.3224375,
+    0.0
+   ],
+   "ssim": [
+    0.92015,
+    0.9163500000000002
+   ]
+  },
+  "failing": {
+   "n": 8,
+   "editable": [
+    0.3550625,
+    1.0
+   ],
+   "picture": [
+    0.644875,
+    0.0
+   ],
+   "ssim": [
+    0.92175,
+    0.9140625
+   ]
+  }
+ },
+ "before": {
+  "h0-en": {
+   "editable": 0.3493,
+   "ssim": 0.9332,
+   "regions": 5,
+   "nodes": 16,
+   "picture_share": 0.651,
+   "html_kb": 104,
+   "has_gradient": true,
+   "sec": 1.8
+  },
+  "h0-fa": {
+   "editable": 0.3456,
+   "ssim": 0.9459,
+   "regions": 5,
+   "nodes": 20,
+   "picture_share": 0.654,
+   "html_kb": 90,
+   "has_gradient": true,
+   "sec": 1.7
+  },
+  "h1-en": {
+   "editable": 0.3558,
+   "ssim": 0.9391,
+   "regions": 6,
+   "nodes": 14,
+   "picture_share": 0.644,
+   "html_kb": 96,
+   "has_gradient": true,
+   "sec": 1.6
+  },
+  "h1-fa": {
+   "editable": 0.3455,
+   "ssim": 0.9486,
+   "regions": 6,
+   "nodes": 18,
+   "picture_share": 0.654,
+   "html_kb": 87,
+   "has_gradient": true,
+   "sec": 1.9
+  },
+  "h2-en": {
+   "editable": 0.3553,
+   "ssim": 0.9307,
+   "regions": 5,
+   "nodes": 13,
+   "picture_share": 0.645,
+   "html_kb": 97,
+   "has_gradient": true,
+   "sec": 1.5
+  },
+  "h2-fa": {
+   "editable": 0.3647,
+   "ssim": 0.945,
+   "regions": 5,
+   "nodes": 19,
+   "picture_share": 0.635,
+   "html_kb": 86,
+   "has_gradient": true,
+   "sec": 1.3
+  },
+  "h3-en": {
+   "editable": 1.0,
+   "ssim": 0.9194,
+   "regions": 12,
+   "nodes": 22,
+   "picture_share": 0.0,
+   "html_kb": 11,
+   "has_gradient": true,
+   "sec": 1.7
+  },
+  "h3-fa": {
+   "editable": 1.0,
+   "ssim": 0.9298,
+   "regions": 12,
+   "nodes": 28,
+   "picture_share": 0.0,
+   "html_kb": 14,
+   "has_gradient": true,
+   "sec": 1.8
+  },
+  "h4-en": {
+   "editable": 1.0,
+   "ssim": 0.8964,
+   "regions": 13,
+   "nodes": 25,
+   "picture_share": 0.0,
+   "html_kb": 11,
+   "has_gradient": true,
+   "sec": 1.8
+  },
+  "h4-fa": {
+   "editable": 1.0,
+   "ssim": 0.9261,
+   "regions": 11,
+   "nodes": 34,
+   "picture_share": 0.0,
+   "html_kb": 17,
+   "has_gradient": true,
+   "sec": 1.4
+  },
+  "h5-en": {
+   "editable": 1.0,
+   "ssim": 0.9045,
+   "regions": 12,
+   "nodes": 25,
+   "picture_share": 0.0,
+   "html_kb": 14,
+   "has_gradient": true,
+   "sec": 1.7
+  },
+  "h5-fa": {
+   "editable": 1.0,
+   "ssim": 0.9327,
+   "regions": 12,
+   "nodes": 30,
+   "picture_share": 0.0,
+   "html_kb": 16,
+   "has_gradient": true,
+   "sec": 1.7
+  },
+  "h6-en": {
+   "editable": 0.3629,
+   "ssim": 0.8599,
+   "regions": 4,
+   "nodes": 14,
+   "picture_share": 0.637,
+   "html_kb": 106,
+   "has_gradient": false,
+   "sec": 1.5
+  },
+  "h6-fa": {
+   "editable": 0.3614,
+   "ssim": 0.8716,
+   "regions": 4,
+   "nodes": 20,
+   "picture_share": 0.639,
+   "html_kb": 90,
+   "has_gradient": false,
+   "sec": 1.4
+  },
+  "h7-en": {
+   "editable": 1.0,
+   "ssim": 0.9158,
+   "regions": 14,
+   "nodes": 23,
+   "picture_share": 0.0,
+   "html_kb": 10,
+   "has_gradient": true,
+   "sec": 1.6
+  },
+  "h7-fa": {
+   "editable": 1.0,
+   "ssim": 0.9237,
+   "regions": 14,
+   "nodes": 34,
+   "picture_share": 0.0,
+   "html_kb": 18,
+   "has_gradient": true,
+   "sec": 1.6
+  }
+ },
+ "after": {
+  "h0-en": {
+   "editable": 1.0,
+   "ssim": 0.9073,
+   "regions": 14,
+   "nodes": 30,
+   "picture_share": 0.0,
+   "html_kb": 17,
+   "has_gradient": true,
+   "sec": 9.0
+  },
+  "h0-fa": {
+   "editable": 1.0,
+   "ssim": 0.9312,
+   "regions": 12,
+   "nodes": 31,
+   "picture_share": 0.0,
+   "html_kb": 16,
+   "has_gradient": true,
+   "sec": 8.2
+  },
+  "h1-en": {
+   "editable": 1.0,
+   "ssim": 0.9196,
+   "regions": 14,
+   "nodes": 27,
+   "picture_share": 0.0,
+   "html_kb": 13,
+   "has_gradient": true,
+   "sec": 8.1
+  },
+  "h1-fa": {
+   "editable": 1.0,
+   "ssim": 0.9375,
+   "regions": 12,
+   "nodes": 28,
+   "picture_share": 0.0,
+   "html_kb": 14,
+   "has_gradient": true,
+   "sec": 11.3
+  },
+  "h2-en": {
+   "editable": 1.0,
+   "ssim": 0.9033,
+   "regions": 16,
+   "nodes": 30,
+   "picture_share": 0.0,
+   "html_kb": 15,
+   "has_gradient": true,
+   "sec": 8.5
+  },
+  "h2-fa": {
+   "editable": 1.0,
+   "ssim": 0.9298,
+   "regions": 12,
+   "nodes": 30,
+   "picture_share": 0.0,
+   "html_kb": 16,
+   "has_gradient": true,
+   "sec": 8.4
+  },
+  "h3-en": {
+   "editable": 1.0,
+   "ssim": 0.9194,
+   "regions": 12,
+   "nodes": 22,
+   "picture_share": 0.0,
+   "html_kb": 11,
+   "has_gradient": true,
+   "sec": 1.9
+  },
+  "h3-fa": {
+   "editable": 1.0,
+   "ssim": 0.9298,
+   "regions": 12,
+   "nodes": 28,
+   "picture_share": 0.0,
+   "html_kb": 14,
+   "has_gradient": true,
+   "sec": 2.4
+  },
+  "h4-en": {
+   "editable": 1.0,
+   "ssim": 0.897,
+   "regions": 14,
+   "nodes": 22,
+   "picture_share": 0.0,
+   "html_kb": 10,
+   "has_gradient": true,
+   "sec": 5.6
+  },
+  "h4-fa": {
+   "editable": 1.0,
+   "ssim": 0.9263,
+   "regions": 12,
+   "nodes": 31,
+   "picture_share": 0.0,
+   "html_kb": 16,
+   "has_gradient": true,
+   "sec": 4.7
+  },
+  "h5-en": {
+   "editable": 1.0,
+   "ssim": 0.9045,
+   "regions": 12,
+   "nodes": 25,
+   "picture_share": 0.0,
+   "html_kb": 14,
+   "has_gradient": true,
+   "sec": 4.4
+  },
+  "h5-fa": {
+   "editable": 1.0,
+   "ssim": 0.9326,
+   "regions": 12,
+   "nodes": 29,
+   "picture_share": 0.0,
+   "html_kb": 15,
+   "has_gradient": true,
+   "sec": 3.6
+  },
+  "h6-en": {
+   "editable": 1.0,
+   "ssim": 0.877,
+   "regions": 16,
+   "nodes": 31,
+   "picture_share": 0.0,
+   "html_kb": 16,
+   "has_gradient": true,
+   "sec": 18.5
+  },
+  "h6-fa": {
+   "editable": 1.0,
+   "ssim": 0.9068,
+   "regions": 14,
+   "nodes": 34,
+   "picture_share": 0.0,
+   "html_kb": 18,
+   "has_gradient": true,
+   "sec": 19.0
+  },
+  "h7-en": {
+   "editable": 1.0,
+   "ssim": 0.9158,
+   "regions": 14,
+   "nodes": 23,
+   "picture_share": 0.0,
+   "html_kb": 10,
+   "has_gradient": true,
+   "sec": 5.1
+  },
+  "h7-fa": {
+   "editable": 1.0,
+   "ssim": 0.9237,
+   "regions": 14,
+   "nodes": 34,
+   "picture_share": 0.0,
+   "html_kb": 18,
+   "has_gradient": true,
+   "sec": 4.6
+  }
+ }
+}

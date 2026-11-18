@@ -526,10 +526,50 @@ def k_settings(c: Ctx) -> str:
     return f'<div class="shell">{side}{main}</div>'
 
 
+# --------------------------------------------------------------------------- full-bleed gradient hero pages (v2.3)
+# The pages the converter used to paste as ONE picture: a gradient band under the header whose colours touch the page background.
+HERO_VARIANTS = [
+    # (name, hero css background, page dark?, hero text colour, cta css background, page background that TOUCHES the end colour of the hero (or None))
+    ("seam-dark", "linear-gradient(180deg,#14264d,#0b1220)", True, "#ffffff", "linear-gradient(135deg,#6d28d9,#2563eb)", "#0b1220"),
+    ("seam-light", "linear-gradient(180deg,#e0e7ff,#ffffff)", False, "#0f172a", "linear-gradient(135deg,#2563eb,#0ea5e9)", "#ffffff"),
+    ("diag-dark", "linear-gradient(135deg,#14264d,#0b1220)", True, "#ffffff", "linear-gradient(90deg,#0f766e,#14b8a6)", "#0b1220"),
+    ("diag-light", "linear-gradient(135deg,#eef2ff,#dbeafe)", False, "#0f172a", "linear-gradient(135deg,#7c3aed,#2563eb)", "#dbeafe"),
+    ("vivid", "linear-gradient(135deg,#1d4ed8,#0ea5e9)", False, "#ffffff", "linear-gradient(135deg,#f97316,#ef4444)", None),
+    ("three-stop", "linear-gradient(120deg,#0d9488,#0f766e 55%,#115e59)", True, "#ffffff", "linear-gradient(135deg,#6d28d9,#db2777)", None),
+    ("radial", "radial-gradient(circle at 70% 30%,#3b82f6,#0b1220 70%)", True, "#ffffff", "radial-gradient(circle at 20% 50%,#8b5cf6,#2563eb 80%)", "#0b1220"),
+    ("circles", "linear-gradient(135deg,#0f766e,#115e59)", False, "#ffffff", "linear-gradient(135deg,#0f766e,#115e59)", None),
+]
+
+
+def k_hero(c: Ctx) -> str:
+    name, hero_bg, dark_page, hfg, cta_bg, page_bg = HERO_VARIANTS[c.p["hero_variant"] % len(HERO_VARIANTS)]
+    ovr = ('<style>:root{--bg:%s;--soft:color-mix(in srgb,%s 94%%,#808080)}</style>' % (page_bg, page_bg)) if page_bg else ""
+    nav = c.nav([c.words(1, 1) for _ in range(4)], c.rng.choice(["Chagher", "Nova"]) if not c.fa else c.rng.choice(["نوا", "پارس"]), c.btn(c.words(1, 2), "primary"))
+    deco = ""
+    if name == "circles":
+        deco = ('<i style="position:absolute;width:320px;height:320px;border-radius:50%;background:rgba(255,255,255,.10);top:-90px;inset-inline-end:-60px"></i>'
+                '<i style="position:absolute;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,.08);bottom:-60px;inset-inline-start:30%"></i>')
+    pfg = "opacity:.88"
+    hero = (f'<section style="background:{hero_bg};color:{hfg};padding:96px 0 110px;position:relative;overflow:hidden">{deco}'
+            f'<div class="wrap" style="position:relative;display:flex;flex-direction:column;gap:18px;max-width:900px;margin:0">'
+            f'{c.t(c.title(), "h1", "", "max-width:760px")}{c.t(c.sentence(10, 16), "p", "", "font-size:19px;max-width:640px;" + pfg)}'
+            f'<div style="display:flex;gap:12px;margin-top:8px">{c.btn(c.words(1, 2), "primary", "background:#22c55e;color:#06210f")}'
+            f'{c.btn(c.words(1, 2), "outline", "color:" + hfg + ";border-color:" + hfg)}</div></div></section>')
+    feats = "".join(c.card(f'<div style="display:flex;flex-direction:column;gap:10px">{c.t(c.words(1, 3), "h3")}{c.t(c.sentence(8, 14), "p", "muted small")}</div>') for _ in range(3))
+    features = f'<section class="sec"><div class="wrap"><div class="grid" style="grid-template-columns:repeat(3,1fr)">{feats}</div></div></section>'
+    steps = "".join(f'<div style="display:flex;gap:14px;align-items:center">{c.t(c.n(k=i + 1), "span", "", "font-weight:700;font-size:20px;color:var(--primary)")}{c.t(c.sentence(3, 6), "span")}</div>' for i in range(4))
+    how = f'<section class="sec" style="padding-top:0"><div class="wrap"><div style="margin-bottom:22px">{c.t(c.title(), "h2")}</div><div class="list">{steps}</div></div></section>'
+    cta = (f'<section style="background:{cta_bg};color:#fff;padding:56px 0"><div class="wrap" style="display:flex;align-items:center;justify-content:space-between;gap:24px">'
+           f'<div style="display:flex;flex-direction:column;gap:6px">{c.t(c.title(), "h2")}{c.t(c.sentence(5, 9), "p", "", "opacity:.9")}</div>'
+           f'{c.btn(c.words(1, 2), "primary", "background:#fff;color:#1e1b4b")}</div></section>')
+    return ovr + nav + hero + features + how + cta + c.footer()
+
+
+
 KIND_FN = {
     "landing": k_landing, "dashboard": k_dashboard, "table": k_table, "form": k_form,
     "pricing": k_pricing, "login": k_login, "products": k_products, "blog": k_blog,
-    "mobile": k_mobile, "settings": k_settings,
+    "mobile": k_mobile, "settings": k_settings, "hero": k_hero,
 }
 
 
@@ -549,13 +589,21 @@ def make_page(kind: str, lang: str, theme: str, seed: int) -> dict:
         hero_grad=rng.random() < 0.4,
         latin_font=rng.choice(["Inter, sans-serif"] * 4 + ["Vazirmatn, sans-serif"]),
         serif=(kind == "blog" and seed % 2 == 1 and lang == "en"),
+        hero_variant=seed,
     )
     if kind == "mobile":
         p["gutter"] = 16
+    if kind == "hero":      # the variant decides light/dark page (the theme argument only names the page)
+        theme = "dark" if HERO_VARIANTS[seed % len(HERO_VARIANTS)][2] else "light"
     ctx = Ctx(rng=rng, fa=lang == "fa", dark=theme == "dark", width=width, p=p)
     body = KIND_FN[kind](ctx)
     return dict(id=f"{kind}-{lang}-{theme}-{seed}", kind=kind, lang=lang, theme=theme, seed=seed,
                 width=width, html=_shell(ctx, body, kind))
+
+
+def hero_specs() -> list[tuple]:
+    """The 16 full-bleed gradient hero pages (8 gradient designs x fa/en); not part of the 80/24-page benchmark sets."""
+    return [("hero", lang, "dark" if HERO_VARIANTS[v][2] else "light", v) for v in range(len(HERO_VARIANTS)) for lang in LANGS]
 
 
 def page_specs(full: bool = True) -> list[tuple]:
